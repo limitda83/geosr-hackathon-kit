@@ -10,7 +10,7 @@
 
 **A. git으로 (권장 — 팀 협업에 유리)**
 ```bash
-git clone https://github.com/<ORG>/geosr-hackathon-kit.git
+git clone https://github.com/limitda83/geosr-hackathon-kit.git
 cd geosr-hackathon-kit
 ```
 
