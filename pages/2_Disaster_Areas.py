@@ -55,6 +55,17 @@ filtered = df[
     (df["keyword"].isin(selected_keywords))
 ] if "date" in df.columns else df
 
+# 기간/키워드 필터를 빈도·TOP N·지도에도 반영: filtered에서 빈도 재계산(좌표는 region_frequency에서 조인)
+_coords = (freq_df[["location", "lat", "lon"]].drop_duplicates("location")
+           if {"location", "lat", "lon"}.issubset(freq_df.columns)
+           else pd.DataFrame(columns=["location", "lat", "lon"]))
+_loc = (filtered[filtered["location"].astype(str).str.strip().ne("")]
+        if "location" in filtered.columns else filtered.iloc[0:0])
+filt_freq = (_loc.groupby("location").size().reset_index(name="count")
+             .merge(_coords, on="location", how="left")
+             .dropna(subset=["lat", "lon"])
+             .sort_values("count", ascending=False))
+
 st.markdown("---")
 
 # 뉴스 테이블
@@ -67,19 +78,21 @@ col1, col2 = st.columns([1, 1])
 
 with col1:
     st.subheader("📊 발생 위치 빈도")
-    if not freq_df.empty:
+    if not filt_freq.empty:
         import plotly.express as px
-        fig = px.bar(freq_df.sort_values("count", ascending=True),
+        fig = px.bar(filt_freq.sort_values("count", ascending=True),
                      x="count", y="location", orientation="h",
                      labels={"count": "발생 횟수", "location": "지역"})
         st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("선택한 기간에 해당하는 데이터가 없습니다.")
 
 with col2:
     st.subheader("🏆 관심지역 TOP N")
     top_n = st.slider("TOP N", 3, 10, 5)
-    top_regions = freq_df.sort_values("count", ascending=False).head(top_n)
-    for i, row in top_regions.iterrows():
-        st.markdown(f"**{top_regions.index.get_loc(i)+1}위** {row['location']} — {row['count']}건")
+    top_regions = filt_freq.sort_values("count", ascending=False).head(top_n)
+    for rank, (_, row) in enumerate(top_regions.iterrows(), start=1):
+        st.markdown(f"**{rank}위** {row['location']} — {int(row['count'])}건")
 
 st.markdown("---")
 
@@ -89,7 +102,7 @@ try:
     import folium
     from streamlit_folium import st_folium
     m = folium.Map(location=[35.5, 128.0], zoom_start=7)
-    for _, row in freq_df.iterrows():
+    for _, row in filt_freq.iterrows():
         folium.CircleMarker(
             location=[row["lat"], row["lon"]],
             radius=row["count"] / 2,

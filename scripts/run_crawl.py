@@ -23,19 +23,23 @@ def main():
     ap.add_argument("--top", type=int, default=3, help="AOI 상위 N개")
     ap.add_argument("--seed", action="store_true", help="시드데이터만 사용")
     ap.add_argument("--bigkinds", help="빅카인즈 엑셀/CSV 경로로 적재")
+    ap.add_argument("--damage", action="store_true",
+                    help="실제 피해 발생 기사만(피해/폐사/양식/적조/경보 등)")
     args = ap.parse_args()
 
     keywords = args.keyword or [args.type]
     if args.bigkinds:
-        print(f"[bigkinds] 적재: {args.bigkinds}")
+        print(f"[bigkinds] 적재: {args.bigkinds}  (피해필터={args.damage})")
         rep = ingest_bigkinds(args.bigkinds, disaster_type=args.type,
                               keyword=(args.keyword[0] if args.keyword else None),
-                              since=args.since, until=args.until, top_n=args.top)
+                              since=args.since, until=args.until, top_n=args.top,
+                              damage_only=args.damage)
     else:
-        print(f"[crawl] 네이버 키: {'있음' if config.has_naver() else '없음(→RSS/시드 폴백)'}")
+        print(f"[crawl] 네이버 키: {'있음' if config.has_naver() else '없음(→RSS/시드 폴백)'}  (피해필터={args.damage})")
         rep = run_pipeline(disaster_type=args.type, keywords=keywords,
                            max_items=args.max, since=args.since, until=args.until,
-                           top_n=args.top, force_seed=args.seed)
+                           top_n=args.top, force_seed=args.seed,
+                           damage_only=args.damage)
     print(f"[crawl] 소스={rep.source_used}  수집 {rep.n_fetched}건  "
           f"신규 {rep.n_new}건  위치추출 {rep.n_located}건")
     print(f"[AOI] 상위 {len(rep.aois)}개:")
