@@ -109,3 +109,45 @@
   - `pages/4_Report.py` 개선: st.session_state에 결과 저장 → Streamlit rerun 후에도 다운로드 버튼 유지, 하단에 `data/results/summary/` 기존 보고서 목록 표시 + 재다운로드 버튼 추가
 - 막힘 → 해결: Streamlit에서 버튼 클릭 후 rerun 시 다운로드 버튼 소멸 문제 → session_state로 bytes 보관하여 해결
 ---
+### [#7] OpenAI 챗봇 연동 및 홈 화면 실제 데이터 적용
+- 작성자(팀원): jiny (jnkim)
+- 목표: (1) secrets.toml에 키가 있음에도 동작하지 않던 OpenAI 챗봇 수정. (2) 1_Home.py의 뉴스 건수·수온 건수·이상 지역 수를 하드코딩에서 실제 CSV 데이터 기반으로 교체.
+- 에이전트에게 시킨 것(실제 프롬프트 핵심 인용):
+  > "지금 아직 openapi 챗봇이 적용이 안되는데 openapi 키 넣었는데 적용 좀 해줘"
+  > "응 실제 데이터로 바꿔줘" (홈 화면 수치 하드코딩 → 실제 값)
+- 사용한 기법(있으면): (b) 외부 도구 연동 — OpenAI GPT-4o-mini API, st.secrets
+- 결과:
+  - `utils/chat_widget.py`: `st.secrets.get("OPENAI_API_KEY","")` 로 키 로드, 연결 상태 표시(녹색/빨강), API 오류 시 JS에서 에러 메시지 표시, 키 없을 때 입력창 비활성화
+  - `pages/1_Home.py`: `@st.cache_data(ttl=300)` 함수 `load_stats()` 추가 — `disaster_events.csv`(뉴스 1,850건), KHOA_OPeNDAP CSV(수온 552건), 28°C 3일 이상 연속 조건으로 이상 지역 2개(고흥·거제) 실시간 산출
+- 막힘 → 해결: 없음
+---
+### [#8] 고수온 경보·주의보 플로팅 알림 서브에이전트 구현
+- 작성자(팀원): jiny (jnkim)
+- 목표: 28°C 이상 고수온이 1~2일 지속 시 주의보, 3일 이상 지속 시 경보를 판단하고 웹 화면에 플로팅 토스트 알림으로 표시하는 기능을 서브에이전트로 구현.
+- 에이전트에게 시킨 것(실제 프롬프트 핵심 인용):
+  > "알림 기능도 하기로 했는데 서브에이전트로 해야할듯"
+  > "웹 내에서 플로팅 알림처럼 뜨게, 조건은 28도 우리 정해둔 조건이 오래 지속될 경우"
+  > "28도 이상 고수온 현상이 3일 이상 지속되었을 경우 경보, 당일이면 주의보 2일까진 주의보 유지, 3일째부턴 경보로 전환"
+  > "응 그리고 이거 서브에이전트로 만든걸로 하자"
+- 사용한 기법(있으면): (a) 서브에이전트 — `.claude/agents/alert-agent.md` 정의 / (c) 재사용 산출물
+- 결과:
+  - `agents/alert_agent.py`: KHOA_OPeNDAP CSV 스캔 → 지역별 `current_streak`(현재 연속 고수온 일수) 산출 → alarm(3일 이상)/advisory(1~2일)/normal 판단. `demo=True` 모드로 과거 최장 연속(max_consec) 기반 시연 지원.
+  - `utils/alert_widget.py`: `components.html()`로 `window.parent.document`에 우상단 플로팅 토스트 주입. 8초 자동 소멸 + 진행 바 + X 버튼. 경보(빨강)/주의보(노랑) 색상 분리. 중복 방지 로직 포함.
+  - `agents/main_agent.py`: 4단계 파이프라인(뉴스→수집→alert_agent→보고서)에 alert_agent 통합.
+  - `.claude/agents/alert-agent.md`: 서브에이전트 역할·기준표·반환값 스키마 재사용 정의 문서.
+- 막힘 → 해결:
+  - 실측 데이터가 2025-08-31 종료라 `current_streak` 전부 0 → `demo=True` 파라미터로 `max_consec`을 fallback으로 사용해 해결.
+  - 정렬 키에서 `"danger"` 잔류 버그(level이 `"alarm"`으로 변경 후 미수정) → 수정.
+---
+### [#9] 지도 시각화 개선 — plotly scatter_mapbox (carto-darkmatter) 전환
+- 작성자(팀원): jiny (jnkim)
+- 목표: 기존 folium·pydeck 지도가 미관상 부족하다는 피드백을 받아 plotly scatter_mapbox + carto-darkmatter 스타일로 전환. Heat Analysis 페이지 HeatmapLayer가 번지는 문제 해결.
+- 에이전트에게 시킨 것(실제 프롬프트 핵심 인용):
+  > "지금 지도가 너무 안예쁜 거 같은데 qgis나 이런 게 있어야하려나"
+  > "아니 지금 heat analysis에 지도 이상해 다른 걸로"
+- 사용한 기법(있으면): (b) 외부 라이브러리 전환(folium → pydeck → plotly)
+- 결과:
+  - `pages/3_Heat_Analysis.py`: pydeck HeatmapLayer → `px.scatter_mapbox`, `carto-darkmatter`, 온도 컬러스케일(파랑→주황→빨강), 8,000점 샘플링으로 렌더링 최적화.
+  - `pages/2_Disaster_Areas.py`: 뉴스 빈도 버블 맵을 plotly scatter_mapbox로 통일. size·color 모두 건수 기준.
+- 막힘 → 해결: pydeck HeatmapLayer가 20k 이상 격자점에서 blur 발생 → scatter_mapbox로 점별 색상 매핑으로 교체.
+---
