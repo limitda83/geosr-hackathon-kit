@@ -152,36 +152,40 @@ st.plotly_chart(fig, use_container_width=True)
 
 st.markdown("---")
 
-# ── 누적 빈도 & 연속 지속 비교 (sst_frequency / sst_persistence 결과 대응) ──
-col_a, col_b = st.columns(2)
+# ── 분석 결과 이미지 (sst_processing / sst_frequency / sst_persistence 출력) ──
+SST_HOT_DIR   = Path("data/sst/hot")
+SST_PERS_DIR  = Path("data/sst/persistence")
 
-with col_a:
-    st.subheader(f"🟠 누적 고수온 일수 ({FREQ_MIN}일↑ 기준)")
-    freq_rows = [{"지역": r, "고수온 일수": stats[r]["hot_freq"],
-                  f"{FREQ_MIN}일↑": "✅" if stats[r]["persist2"] else ""}
-                 for r in selected]
-    freq_df = pd.DataFrame(freq_rows).sort_values("고수온 일수", ascending=True)
-    fig_f = px.bar(freq_df, x="고수온 일수", y="지역", orientation="h",
-                   color="고수온 일수", color_continuous_scale="YlOrRd",
-                   text="고수온 일수")
-    fig_f.update_traces(textposition="outside")
-    fig_f.update_layout(height=80 + 50 * len(selected),
-                        margin=dict(t=10, b=20), coloraxis_showscale=False)
-    st.plotly_chart(fig_f, use_container_width=True)
+def show_images(paths: list[Path], cols: int = 2):
+    if not paths:
+        return False
+    rows = [paths[i:i+cols] for i in range(0, len(paths), cols)]
+    for row in rows:
+        cs = st.columns(len(row))
+        for c, p in zip(cs, row):
+            c.image(str(p), caption=p.stem, use_container_width=True)
+    return True
 
-with col_b:
-    st.subheader(f"🔴 최장 연속 고수온 ({CONSEC_MIN}일↑ 기준)")
-    consec_rows = [{"지역": r, "최장 연속일": stats[r]["max_consec"],
-                    f"{CONSEC_MIN}일↑": "✅" if stats[r]["persist3"] else ""}
-                   for r in selected]
-    consec_df = pd.DataFrame(consec_rows).sort_values("최장 연속일", ascending=True)
-    fig_c = px.bar(consec_df, x="최장 연속일", y="지역", orientation="h",
-                   color="최장 연속일", color_continuous_scale="OrRd",
-                   text="최장 연속일")
-    fig_c.update_traces(textposition="outside")
-    fig_c.update_layout(height=80 + 50 * len(selected),
-                        margin=dict(t=10, b=20), coloraxis_showscale=False)
-    st.plotly_chart(fig_c, use_container_width=True)
+tab1, tab2, tab3 = st.tabs(["🗺️ 일별 고수온 지도", "🟠 누적 빈도 지도", "🔴 연속 지속 지도"])
+
+with tab1:
+    imgs = sorted((SST_HOT_DIR / "img").glob("*.png")) if (SST_HOT_DIR / "img").exists() else []
+    if not show_images(imgs, cols=3):
+        st.info("분석 결과 이미지가 없습니다. 아래 파이프라인을 실행하세요.\n\n"
+                "**1단계** — KHOA NC 파일 다운로드:\n"
+                "```bash\npython src/download_khoa_sst.py --start 2025-07-01 --end 2025-08-31\n```\n"
+                "**2단계** — 전체 분석 파이프라인 실행:\n"
+                "```bash\npython src/run_pipeline.py data/khoa_sst data/sst/hot data/sst/persistence\n```")
+
+with tab2:
+    imgs = sorted(SST_PERS_DIR.glob("SST_HOTFREQ*.png"))
+    if not show_images(imgs, cols=2):
+        st.info("누적 빈도 지도가 없습니다. `run_pipeline.py` 실행 후 표시됩니다.")
+
+with tab3:
+    imgs = sorted(SST_PERS_DIR.glob("SST_HOTCONSEC*.png"))
+    if not show_images(imgs, cols=2):
+        st.info("연속 지속 지도가 없습니다. `run_pipeline.py` 실행 후 표시됩니다.")
 
 st.markdown("---")
 

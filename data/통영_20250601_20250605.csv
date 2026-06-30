@@ -1,0 +1,6 @@
+date,lat,lon,sst,source
+2025-06-01,34.8544,128.4333,23.01,fallback_sample
+2025-06-02,34.8544,128.4333,19.93,fallback_sample
+2025-06-03,34.8544,128.4333,21.25,fallback_sample
+2025-06-04,34.8544,128.4333,20.01,fallback_sample
+2025-06-05,34.8544,128.4333,21.84,fallback_sample
