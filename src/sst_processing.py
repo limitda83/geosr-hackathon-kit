@@ -230,7 +230,7 @@ def save_nc(ds: xr.Dataset, out_path: str) -> str:
 # ---------------------------------------------------------------------------
 # 6) 파일 1개 처리: 읽기 → 추출 → 저장 (한 번에)
 # ---------------------------------------------------------------------------
-def process_file(in_path: str, out_dir: str = "data/sst/hot",
+def process_file(in_path: str, out_dir: str = "data/results/sst_analysis/sst_over28",
                  threshold: float = HIGH_SST_THRESHOLD,
                  make_image: bool = False, img_dir: str = None,
                  img_vmin: float = 28.0, img_vmax: float = 33.0) -> dict:
@@ -301,7 +301,7 @@ def process_file(in_path: str, out_dir: str = "data/sst/hot",
 # ---------------------------------------------------------------------------
 # 7) 폴더 통째로 처리: 안의 모든 .nc 를 고수온 추출
 # ---------------------------------------------------------------------------
-def process_dir(in_dir: str, out_dir: str = "data/sst/hot",
+def process_dir(in_dir: str, out_dir: str = "data/results/sst_analysis/sst_over28",
                 threshold: float = HIGH_SST_THRESHOLD,
                 pattern: str = "*.nc", make_image: bool = False,
                 img_dir: str = None, progress: bool = False) -> list:
@@ -336,7 +336,7 @@ if __name__ == "__main__":
     import sys
 
     in_arg = sys.argv[1] if len(sys.argv) > 1 else "."
-    out_arg = sys.argv[2] if len(sys.argv) > 2 else "data/sst/hot"
+    out_arg = sys.argv[2] if len(sys.argv) > 2 else "data/results/sst_analysis/sst_over28"
     thr = float(sys.argv[3]) if len(sys.argv) > 3 else HIGH_SST_THRESHOLD
 
     print(f"=== 고수온(≥{thr}℃) 격자 추출 ===")

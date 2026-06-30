@@ -77,7 +77,7 @@ def build_frequency(stack, persist_min: int = PERSIST_MIN_DAYS):
 # ---------------------------------------------------------------------------
 # 전체 실행: 파일을 한 장씩 읽어 누적 → NC + 지도 PNG (메모리 안전)
 # ---------------------------------------------------------------------------
-def run(hot_dir: str = "data/sst/hot", out_dir: str = "data/sst/persistence",
+def run(hot_dir: str = "data/results/sst_analysis/sst_over28", out_dir: str = "data/results/sst_analysis/persistence",
         persist_min: int = PERSIST_MIN_DAYS, make_png: bool = True) -> dict:
     """누적 빈도 NC 와 해안선 배경 지도 PNG 를 만든다. 결과 요약 dict 를 돌려준다."""
     paths = list_hot_files(hot_dir)
@@ -137,8 +137,8 @@ def run(hot_dir: str = "data/sst/hot", out_dir: str = "data/sst/persistence",
 if __name__ == "__main__":
     import sys
 
-    hot_dir = sys.argv[1] if len(sys.argv) > 1 else "data/sst/hot"
-    out_dir = sys.argv[2] if len(sys.argv) > 2 else "data/sst/persistence"
+    hot_dir = sys.argv[1] if len(sys.argv) > 1 else "data/results/sst_analysis/sst_over28"
+    out_dir = sys.argv[2] if len(sys.argv) > 2 else "data/results/sst_analysis/persistence"
     p_min = int(sys.argv[3]) if len(sys.argv) > 3 else PERSIST_MIN_DAYS
 
     print("=== [요구사항5-①] 고수온 누적 빈도 정보 생산 ===")

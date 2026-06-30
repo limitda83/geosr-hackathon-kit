@@ -17,12 +17,12 @@ download_lss.py — KHOA LSS(저염분수 추정) 일자별 자료 다운로더
   - 맨 .nc 주소를 GET 하면 '원본 파일'이 그대로 내려옵니다.
 
 기본 동작:
-  인자 없이 실행하면 2025-07-01 ~ 2025-08-31 자료를 ./data/lss 폴더에 받습니다.
+  인자 없이 실행하면 2025-07-01 ~ 2025-08-31 자료를 ./data/input/lss 폴더에 받습니다.
   이미 받은(정상 크기) 파일은 건너뜁니다(이어받기). 오류(작은 HTML 등)는 자동 삭제 후 재시도 대상.
 
 사용 예:
   python src/download_lss.py
-  python src/download_lss.py --start 2025-07-01 --end 2025-08-31 --out ./data/lss
+  python src/download_lss.py --start 2025-07-01 --end 2025-08-31 --out ./data/input/lss
   python src/download_lss.py --overwrite      # 이미 있어도 다시 받기
 """
 
@@ -130,7 +130,7 @@ def parse_args(argv=None):
     p = argparse.ArgumentParser(description="KHOA 일자별 LSS(저염분수, NetCDF) 다운로더")
     p.add_argument("--start", default="2025-07-01", help="시작일 YYYY-MM-DD (기본 2025-07-01)")
     p.add_argument("--end", default="2025-08-31", help="종료일 YYYY-MM-DD (기본 2025-08-31)")
-    p.add_argument("--out", default="./data/lss", help="저장 폴더 (기본 ./data/lss)")
+    p.add_argument("--out", default="./data/input/lss", help="저장 폴더 (기본 ./data/input/lss)")
     p.add_argument("--overwrite", action="store_true", help="이미 있어도 다시 받기")
     return p.parse_args(argv)
 

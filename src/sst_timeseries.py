@@ -3,7 +3,7 @@
 sst_timeseries.py — KHOA SST 원자료의 '전체 격자 평균' 일별 시계열 산출·그래프
 
 무엇을 하나:
-  1) data/khoa_sst 의 일별 SST 원자료(.nc)를 한 장씩 읽어
+  1) data/input/khoa_sst 의 일별 SST 원자료(.nc)를 한 장씩 읽어
      '전체 (바다)격자 평균 SST'를 하루당 1개 값으로 계산한다.   → 전체 격자 평균자료
   2) 일별 평균을 표(CSV)로 저장한다. (날짜·평균·최저·최고·유효격자수)
   3) 그 표를 바탕으로 '일별 시계열 그래프'를 그린다.
@@ -78,7 +78,7 @@ def daily_mean_one(path: str, valid_min: float = VALID_MIN,
 # ---------------------------------------------------------------------------
 # 2) 폴더 전체 → 일별 평균 시계열 표(DataFrame)
 # ---------------------------------------------------------------------------
-def compute_daily_means(src_dir: str = "data/khoa_sst", pattern: str = "*.nc",
+def compute_daily_means(src_dir: str = "data/input/khoa_sst", pattern: str = "*.nc",
                         progress: bool = False) -> pd.DataFrame:
     """폴더 안 모든 원자료의 일별 전체격자 평균을 계산해 날짜순 DataFrame 으로 돌려준다."""
     paths = sorted(glob.glob(os.path.join(src_dir, pattern)))
@@ -116,12 +116,14 @@ def load_csv(path: str) -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 def plot_timeseries(df: pd.DataFrame, out_png: str,
                     start=None, end=None, title: str = None,
-                    show_max: bool = True) -> str:
-    """일별 SST 시계열 그래프를 그린다. (최대온도 + 평균온도, 최소온도는 제외)
+                    show_max: bool = True,
+                    ymin: float = 15, ymax: float = 36) -> str:
+    """일별 SST 시계열 그래프를 그린다. (최대온도 막대 + 평균온도 선, 최소온도는 제외)
 
     start, end : 'YYYY-MM-DD' (또는 Timestamp). 주면 그 기간만 그린다.
                  → 최종 웹에서 사용자가 고른 일자를 그대로 넘기면 됨.
-    show_max   : 일별 최대온도 선을 함께 표시(True). 평균온도 선은 항상 표시.
+    show_max   : 일별 최대온도 막대를 함께 표시(True). 평균온도 선은 항상 표시.
+    ymin, ymax : Y축(온도) 표시 범위 (기본 15~36℃).
     """
     import matplotlib
     matplotlib.use("Agg")
@@ -153,6 +155,7 @@ def plot_timeseries(df: pd.DataFrame, out_png: str,
                           f"({p0:%Y-%m-%d} ~ {p1:%Y-%m-%d})")
     ax.set_xlabel("Date")
     ax.set_ylabel("Sea surface temperature (°C)")
+    ax.set_ylim(ymin, ymax)                 # 온도축 범위 고정 (기본 15~36℃)
     ax.grid(True, alpha=0.3)
     ax.legend(loc="best")
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%m-%d"))
@@ -168,7 +171,7 @@ def plot_timeseries(df: pd.DataFrame, out_png: str,
 # ---------------------------------------------------------------------------
 # 5) 전체 실행: 평균 계산 → CSV → 전체기간 그래프
 # ---------------------------------------------------------------------------
-def run(src_dir: str = "data/khoa_sst", out_dir: str = "data/sst/timeseries",
+def run(src_dir: str = "data/input/khoa_sst", out_dir: str = "data/results/sst_analysis/timeseries",
         make_png: bool = True, progress: bool = True) -> dict:
     """일별 전체격자 평균 CSV + 전체기간 시계열 그래프를 만든다. 요약 dict 반환."""
     df = compute_daily_means(src_dir, progress=progress)
@@ -195,8 +198,8 @@ def run(src_dir: str = "data/khoa_sst", out_dir: str = "data/sst/timeseries",
 if __name__ == "__main__":
     import sys
 
-    src_dir = sys.argv[1] if len(sys.argv) > 1 else "data/khoa_sst"
-    out_dir = sys.argv[2] if len(sys.argv) > 2 else "data/sst/timeseries"
+    src_dir = sys.argv[1] if len(sys.argv) > 1 else "data/input/khoa_sst"
+    out_dir = sys.argv[2] if len(sys.argv) > 2 else "data/results/sst_analysis/timeseries"
 
     print("=== KHOA SST 전체 격자 평균 일별 시계열 ===")
     print(f"입력: {src_dir}  →  출력: {out_dir}\n")

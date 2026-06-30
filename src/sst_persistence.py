@@ -91,7 +91,7 @@ def build_consecutive(stack, consec_min: int = CONSEC_MIN_DAYS):
 # ---------------------------------------------------------------------------
 # 전체 실행: 파일을 날짜순 한 장씩 읽어 연속 계산 → NC + 지도 PNG (메모리 안전)
 # ---------------------------------------------------------------------------
-def run(hot_dir: str = "data/sst/hot", out_dir: str = "data/sst/persistence",
+def run(hot_dir: str = "data/results/sst_analysis/sst_over28", out_dir: str = "data/results/sst_analysis/persistence",
         consec_min: int = CONSEC_MIN_DAYS, make_png: bool = True) -> dict:
     """연속 지속일수 NC 와 해안선 배경 지도 PNG 를 만든다. 결과 요약 dict 를 돌려준다."""
     paths = list_hot_files(hot_dir)   # 날짜순 정렬됨
@@ -154,8 +154,8 @@ def run(hot_dir: str = "data/sst/hot", out_dir: str = "data/sst/persistence",
 if __name__ == "__main__":
     import sys
 
-    hot_dir = sys.argv[1] if len(sys.argv) > 1 else "data/sst/hot"
-    out_dir = sys.argv[2] if len(sys.argv) > 2 else "data/sst/persistence"
+    hot_dir = sys.argv[1] if len(sys.argv) > 1 else "data/results/sst_analysis/sst_over28"
+    out_dir = sys.argv[2] if len(sys.argv) > 2 else "data/results/sst_analysis/persistence"
     c_min = int(sys.argv[3]) if len(sys.argv) > 3 else CONSEC_MIN_DAYS
 
     print("=== [요구사항5-②] 동일공간 고수온 지속일수(연속) 확인 ===")
