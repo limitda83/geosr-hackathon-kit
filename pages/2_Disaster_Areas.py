@@ -4,6 +4,7 @@ from pathlib import Path
 from utils.style import apply
 from utils.chat_widget import inject
 from utils.region_extractor import load_disaster_events, extract_regions
+from utils.viz import make_frequency_map
 
 st.set_page_config(page_title="Disaster Areas", page_icon="📰", layout="wide")
 apply()
@@ -83,22 +84,11 @@ st.markdown("---")
 st.subheader("🗺️ 관심지역 지도")
 map_df = freq_df.dropna(subset=["lat", "lon"])
 if map_df.empty:
-    st.warning("위경도 정보가 없어 지도를 표시할 수 없습니다.")
+    st.warning("?????????? ??? ????? ?????????????.")
 else:
     try:
-        import folium
         from streamlit_folium import st_folium
-        m = folium.Map(location=[35.5, 128.0], zoom_start=7, tiles="CartoDB dark_matter")
-        max_cnt = map_df["count"].max()
-        for _, row in map_df.iterrows():
-            ratio = row["count"] / max_cnt
-            folium.CircleMarker(
-                location=[row["lat"], row["lon"]],
-                radius=max(5, row["count"] / max_cnt * 20),
-                color="#00c2d4", fill=True,
-                fill_color="#00e5ff", fill_opacity=0.5 + 0.4 * ratio,
-                tooltip=f"{row['location']}: {int(row['count'])}건",
-            ).add_to(m)
+        m = make_frequency_map(map_df)
         st_folium(m, width=None, height=450, use_container_width=True)
     except Exception as e:
-        st.warning(f"지도 오류: {e}")
+        st.warning(f"???????: {e}")

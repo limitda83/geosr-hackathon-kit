@@ -8,7 +8,7 @@ from pathlib import Path
 def make_hot28_map(df: pd.DataFrame) -> folium.Map:
     center_lat = df["lat"].mean() if "lat" in df.columns else 35.5
     center_lon = df["lon"].mean() if "lon" in df.columns else 128.0
-    m = folium.Map(location=[center_lat, center_lon], zoom_start=8)
+    m = folium.Map(location=[center_lat, center_lon], zoom_start=8, tiles="OpenStreetMap")
     if {"lat", "lon", "value"}.issubset(df.columns):
         heat_data = df[["lat", "lon", "value"]].dropna().values.tolist()
         HeatMap(heat_data, radius=12, blur=8).add_to(m)
@@ -16,7 +16,7 @@ def make_hot28_map(df: pd.DataFrame) -> folium.Map:
 
 
 def make_frequency_map(freq_df: pd.DataFrame) -> folium.Map:
-    m = folium.Map(location=[35.5, 128.0], zoom_start=7)
+    m = folium.Map(location=[35.5, 128.0], zoom_start=7, tiles="OpenStreetMap")
     if freq_df.empty:
         return m
     max_count = freq_df["count"].max()
