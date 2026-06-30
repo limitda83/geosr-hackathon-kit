@@ -139,3 +139,62 @@ with c2:
 """, unsafe_allow_html=True)
 
 st.markdown("<div style='margin-top:16px;font-size:12px;color:#2a5a6a;text-align:center;'>분석 기준: SST 28°C 이상 / 누적 2일 이상 / 연속 3일 이상</div>", unsafe_allow_html=True)
+
+# ── 파이프라인 빠른 실행 ──────────────────────────────────
+section("파이프라인 빠른 실행", "▶")
+st.caption("뉴스 크롤링 → 수온 수집 → 경보 판단을 한 번에 실행합니다. 상세 설정은 **5_Pipeline** 페이지를 이용하세요.")
+
+with st.form("quick_pipeline"):
+    qc1, qc2, qc3 = st.columns([2, 1, 1])
+    with qc1:
+        q_keywords = st.multiselect("키워드", ["고수온", "적조", "냉수"], default=["고수온"], key="q_kw")
+    with qc2:
+        q_start = st.date_input("시작일", value=pd.Timestamp("2025-06-01"), key="q_start").strftime("%Y-%m-%d")
+        q_end   = st.date_input("종료일", value=pd.Timestamp("2025-08-31"), key="q_end").strftime("%Y-%m-%d")
+    with qc3:
+        q_max   = st.number_input("최대 기사 수", 10, 200, 50, step=10, key="q_max")
+        q_thr   = st.slider("고수온 기준(℃)", 24.0, 32.0, 28.0, 0.5, key="q_thr")
+    submitted = st.form_submit_button("▶ 실행", type="primary", use_container_width=True)
+
+if submitted:
+    import config as _cfg
+    prog = st.progress(0, text="[1/3] 뉴스 크롤링 중...")
+    try:
+        from src.news.crawler import run_pipeline as _crawl_pipeline
+        rep = _crawl_pipeline(
+            disaster_type="고수온",
+            keywords=q_keywords,
+            max_items=int(q_max),
+            since=q_start,
+            until=q_end,
+        )
+        prog.progress(40, text=f"[1/3] 완료 — 수집 {rep.n_fetched}건, 위치추출 {rep.n_located}건")
+
+        from agents.collection_agent import run as _run_collection
+        freq_csv = _cfg.DATA_DIR / "results" / "frequency" / "region_frequency.csv"
+        if freq_csv.exists():
+            freq_df = pd.read_csv(freq_csv, encoding="utf-8")
+            regions = freq_df.dropna(subset=["lat", "lon"]).to_dict("records")
+        else:
+            regions = []
+        prog.progress(50, text=f"[2/3] 수온 수집 중... ({len(regions)}개 지역)")
+        col_results = _run_collection(regions, q_start, q_end)
+        ok_n = sum(1 for r in col_results if r.get("success"))
+        prog.progress(85, text=f"[2/3] 완료 — {ok_n}/{len(col_results)}개 지역 성공")
+
+        from agents.alert_agent import get_active_alerts as _alerts
+        alerts = _alerts(threshold=q_thr)
+        alarm_n    = sum(1 for a in alerts if a["level"] == "alarm")
+        advisory_n = sum(1 for a in alerts if a["level"] == "advisory")
+        prog.progress(100, text="[3/3] 경보 판단 완료")
+
+        st.success(
+            f"파이프라인 완료! 기사 {rep.n_fetched}건 수집 · 수온 {ok_n}개 지역 · "
+            f"경보 {alarm_n}건 / 주의보 {advisory_n}건"
+        )
+        st.info("2_Disaster_Areas · 3_Heat_Analysis 페이지에서 최신 결과를 확인하세요.")
+        # 캐시 무효화
+        st.cache_data.clear()
+    except Exception as e:
+        prog.empty()
+        st.error(f"파이프라인 오류: {e}")

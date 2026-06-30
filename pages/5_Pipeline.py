@@ -1,4 +1,4 @@
-"""파이프라인 실행 페이지 — 실제 크롤링→지역추출→수온수집→경보→보고서 전 흐름."""
+"""파이프라인 실행 페이지 — 크롤링→수온수집→경보→보고서 전 흐름 상세 실행·결과 확인."""
 from pathlib import Path
 
 import pandas as pd
@@ -17,32 +17,30 @@ inject_alerts(get_active_alerts())
 
 st.title("🔄 파이프라인 실행")
 st.caption(
-    "뉴스 크롤링 → 관심지역 추출 → 수온 수집 → 경보 판단 → 보고서 생성 "
-    "전 단계를 한 번에 실행합니다."
+    "뉴스 크롤링 → 수온 수집 → 경보 판단 → 보고서 생성. "
+    "실행 후 **2_Disaster_Areas**, **3_Heat_Analysis** 페이지에 결과가 반영됩니다."
 )
 
 # ── API 키 상태 ───────────────────────────────────────────
-with st.expander("🔑 API 키 상태 확인", expanded=False):
+with st.expander("🔑 API 키 상태", expanded=False):
     c1, c2, c3 = st.columns(3)
-    c1.metric("네이버 API", "✅ 설정됨" if config.has_naver() else "❌ 미설정")
-    c2.metric("공공데이터 API", "✅ 설정됨" if config.has_public_data() else "❌ 미설정")
-    c3.metric("KOSC API", "✅ 설정됨" if config._get("KOSC_API_KEY") else "❌ 미설정")
+    c1.metric("네이버 API", "✅" if config.has_naver() else "❌ 미설정")
+    c2.metric("공공데이터 API", "✅" if config.has_public_data() else "❌ 미설정")
+    c3.metric("KOSC API", "✅" if config._get("KOSC_API_KEY") else "❌ 미설정")
     if not config.has_naver() and not config.has_public_data():
-        st.warning("뉴스 API 키 없음 → BigKinds CSV 또는 시드(seed) 파일로 폴백됩니다.")
+        st.info("뉴스 API 키 없음 → 시드(seed) 파일로 폴백됩니다.")
 
 # ── 파라미터 ──────────────────────────────────────────────
-st.subheader("⚙️ 실행 파라미터")
+st.subheader("⚙️ 파라미터")
 col1, col2, col3 = st.columns(3)
 with col1:
-    keywords = st.multiselect(
-        "크롤링 키워드",
-        options=config.DEFAULT_KEYWORDS + ["적조", "냉수"],
-        default=["고수온"],
-    )
+    keywords = st.multiselect("크롤링 키워드", config.DEFAULT_KEYWORDS + ["적조", "냉수"], default=["고수온"])
     max_items = st.number_input("기사 최대 수집 건수", 10, 200, 50, step=10)
+    damage_only = st.checkbox("실제 피해 기사만 수집", value=False)
 with col2:
     start = st.date_input("시작일", value=pd.Timestamp("2025-06-01")).strftime("%Y-%m-%d")
     end   = st.date_input("종료일", value=pd.Timestamp("2025-08-31")).strftime("%Y-%m-%d")
+    top_n = st.number_input("관심지역 상위 N", 1, 10, 3, step=1)
 with col3:
     threshold       = st.slider("고수온 기준(℃)", 24.0, 32.0, 28.0, 0.5)
     generate_report = st.checkbox("보고서 자동 생성", value=True)
@@ -50,21 +48,24 @@ with col3:
 st.markdown("---")
 
 # ── 단계 표시 ─────────────────────────────────────────────
+# Step1: crawler.run_pipeline() = 크롤링 + 위치추출 + SQLite 저장 + CSV export 통합
+# Step2: collection_agent.run() = KOSC API 수온 수집
+# Step3: alert_agent             = 경보 판단
+# Step4: report_agent            = 보고서 생성
 STEPS = [
-    ("📰", "뉴스 크롤링",     "crawl"),      # src/news/crawler.py
-    ("📍", "관심지역 추출",   "region"),     # utils/region_extractor.py
-    ("🛰️", "수온 수집",       "sst"),        # agents/collection_agent.py
-    ("⚠️", "경보 판단",       "alert"),      # agents/alert_agent.py
-    ("📄", "보고서 생성",     "report"),     # agents/report_agent.py
+    ("📰", "뉴스 크롤링·지역 추출", "crawl"),
+    ("🛰️", "수온 수집",             "sst"),
+    ("⚠️", "경보 판단",             "alert"),
+    ("📄", "보고서 생성",           "report"),
 ]
 
 def _badge(state: str) -> str:
     return {"waiting": "⬜", "running": "🔵", "done": "✅", "skip": "⏭️", "error": "❌"}.get(state, "⬜")
 
-step_placeholder = st.empty()
+step_ph = st.empty()
 
 def render_steps(states: dict):
-    with step_placeholder.container():
+    with step_ph.container():
         cols = st.columns(len(STEPS))
         for col, (icon, label, key) in zip(cols, STEPS):
             col.markdown(
@@ -79,7 +80,6 @@ def render_steps(states: dict):
 
 render_steps({})
 
-# ── 실행 ──────────────────────────────────────────────────
 if st.button("▶ 파이프라인 전체 실행", type="primary", use_container_width=True):
     states = {k: "waiting" for _, _, k in STEPS}
     logs: list[str] = []
@@ -91,87 +91,43 @@ if st.button("▶ 파이프라인 전체 실행", type="primary", use_container_
             logs.append(msg)
 
     try:
-        # ── Step 1: 실제 크롤러 ───────────────────────────
+        # ── Step 1: 크롤링 + 위치추출 + CSV export ────────
+        # run_pipeline() 내부: crawl() → _to_records() → EventStore → export_team_csv()
+        # 결과: disaster_events.csv + region_frequency.csv 자동 갱신
         upd("crawl", "running")
-        from src.news.crawler import crawl
-        from src.news.store import EventStore
-        from src.news import parse as news_parse
+        from src.news.crawler import run_pipeline as crawl_pipeline
+        rep = crawl_pipeline(
+            disaster_type="고수온",
+            keywords=keywords,
+            max_items=int(max_items),
+            since=start,
+            until=end,
+            top_n=int(top_n),
+            damage_only=damage_only,
+        )
+        upd("crawl", "done",
+            f"✅ {rep.n_fetched}건 수집 / 신규 {rep.n_new}건 / 위치추출 {rep.n_located}건 "
+            f"(소스: {rep.source_used}) → disaster_events.csv + region_frequency.csv 갱신")
 
-        store = EventStore(config.EVENTS_DB)
-        all_articles = []
-        for kw in keywords:
-            arts = crawl(kw, max_items=max_items, since=start, until=end)
-            all_articles.extend(arts)
-
-        # SQLite에 저장 후 CSV export (disaster_events.csv 갱신)
-        from src.news.store import EventRecord
-        from datetime import datetime, timezone
-
-        records = []
-        for a in all_articles:
-            loc_result = news_parse.resolve_location(
-                f"{getattr(a,'title','')} {getattr(a,'description','')}"
-            )
-            records.append(EventRecord(
-                disaster_type="고수온",
-                event_date=news_parse.extract_event_date(getattr(a, "pub_date", None)),
-                raw_location_text=loc_result.get("raw") if loc_result else None,
-                normalized_sido=loc_result.get("sido") if loc_result else None,
-                normalized_sigungu=loc_result.get("sigungu") if loc_result else None,
-                normalized_region=loc_result.get("region") if loc_result else None,
-                lat=loc_result.get("lat") if loc_result else None,
-                lon=loc_result.get("lon") if loc_result else None,
-                geocode_confidence=loc_result.get("confidence", 0.0) if loc_result else 0.0,
-                geocode_source=loc_result.get("source", "") if loc_result else "",
-                source_title=getattr(a, "title", None),
-                source_url=getattr(a, "link", "") or "",
-                source_name=getattr(a, "source_name", None),
-                pub_date=getattr(a, "pub_date", None),
-                origin=getattr(a, "origin", "unknown"),
-                crawled_at=datetime.now(timezone.utc).isoformat(),
-            ))
-        inserted = store.upsert_many(records)
-
-        # CSV export (2_Disaster_Areas.py 가 읽는 파일 갱신)
-        _events_csv = config.DATA_DIR / "processed" / "disaster_db" / "disaster_events.csv"
-        _events_csv.parent.mkdir(parents=True, exist_ok=True)
-        df_export = store.query()
-        # 기존 페이지 호환 컬럼명으로 rename
-        col_map = {
-            "event_date": "date",
-            "normalized_region": "location",
-            "source_title": "title",
-            "source_url": "url",
-        }
-        df_export = df_export.rename(columns=col_map)
-        df_export["keyword"] = "고수온"
-        df_export.to_csv(_events_csv, index=False, encoding="utf-8")
-
-        upd("crawl", "done", f"✅ 기사 {len(all_articles)}건 수집 / DB 신규 {inserted}건 / CSV 갱신")
-
-        # ── Step 2: 관심지역 추출 ────────────────────────
-        upd("region", "running")
-        from utils.region_extractor import load_disaster_events, extract_regions
-        ev_df = load_disaster_events()
-        freq_df = extract_regions(ev_df)
-        regions = freq_df.dropna(subset=["lat", "lon"]).to_dict("records")
-        upd("region", "done", f"✅ 관심지역 {len(regions)}개 추출 → region_frequency.csv 갱신")
-
-        # ── Step 3: 수온 수집 ────────────────────────────
+        # ── Step 2: 수온 수집 ─────────────────────────────
+        # region_frequency.csv에서 지역 읽어 KOSC API로 수집
         upd("sst", "running")
         from agents.collection_agent import run as run_collection
+        freq_csv = config.DATA_DIR / "results" / "frequency" / "region_frequency.csv"
+        freq_df = pd.read_csv(freq_csv, encoding="utf-8")
+        regions = freq_df.dropna(subset=["lat", "lon"]).to_dict("records")
         col_results = run_collection(regions, start, end)
         ok_n = sum(1 for r in col_results if r.get("success"))
-        upd("sst", "done", f"✅ 수온 수집 {ok_n}/{len(col_results)}개 지역 성공")
+        upd("sst", "done", f"✅ 수온 수집 {ok_n}/{len(col_results)}개 지역 성공 → data/*.csv 저장")
 
-        # ── Step 4: 경보 판단 ────────────────────────────
+        # ── Step 3: 경보 판단 ─────────────────────────────
         upd("alert", "running")
         alerts = get_active_alerts(threshold=threshold)
         alarm_n    = sum(1 for a in alerts if a["level"] == "alarm")
         advisory_n = sum(1 for a in alerts if a["level"] == "advisory")
         upd("alert", "done", f"✅ 경보 {alarm_n}건 / 주의보 {advisory_n}건")
 
-        # ── Step 5: 보고서 ───────────────────────────────
+        # ── Step 4: 보고서 ────────────────────────────────
         if generate_report:
             upd("report", "running")
             from agents.report_agent import run as run_report
@@ -182,19 +138,18 @@ if st.button("▶ 파이프라인 전체 실행", type="primary", use_container_
             upd("report", "skip")
 
         st.session_state["pipeline_result"] = {
-            "articles":    all_articles,
+            "rep": rep,
             "col_results": col_results,
-            "alerts":      alerts,
-            "freq_df":     freq_df,
+            "alerts": alerts,
         }
-        st.success("파이프라인 실행 완료! 2_Disaster_Areas 페이지에서 결과를 확인하세요.")
+        st.success("파이프라인 완료! 2_Disaster_Areas · 3_Heat_Analysis 페이지에서 결과를 확인하세요.")
 
     except Exception as e:
         for key, state in states.items():
             if state == "running":
                 states[key] = "error"
         render_steps(states)
-        st.error(f"파이프라인 오류: {e}")
+        st.error(f"오류: {e}")
         logs.append(f"❌ {e}")
 
     if logs:
@@ -205,35 +160,36 @@ if st.button("▶ 파이프라인 전체 실행", type="primary", use_container_
 # ── 결과 탭 ───────────────────────────────────────────────
 if "pipeline_result" in st.session_state:
     res = st.session_state["pipeline_result"]
+    rep = res["rep"]
     st.markdown("---")
     st.subheader("📊 실행 결과")
 
-    tab1, tab2, tab3, tab4 = st.tabs(["수집 기사", "관심지역", "수온 수집", "경보·주의보"])
+    tab1, tab2, tab3 = st.tabs(["관심지역(AOI)", "수온 수집", "경보·주의보"])
 
     with tab1:
-        arts = res.get("articles", [])
-        if arts:
-            rows = [{"제목": getattr(a,"title",""), "출처": getattr(a,"source_name",""),
-                     "날짜": getattr(a,"pub_date",""), "링크": getattr(a,"link","")} for a in arts]
-            st.dataframe(pd.DataFrame(rows), use_container_width=True)
+        if rep.aois:
+            aoi_rows = [{
+                "순위": a.rank,
+                "지역": a.region_name,
+                "기사 수": a.event_count,
+                "위도": round(a.center_lat, 4),
+                "경도": round(a.center_lon, 4),
+            } for a in rep.aois]
+            st.dataframe(pd.DataFrame(aoi_rows), use_container_width=True)
         else:
-            st.info("수집된 기사가 없습니다.")
+            st.info("추출된 AOI가 없습니다.")
 
     with tab2:
-        freq_df = res.get("freq_df", pd.DataFrame())
-        st.dataframe(freq_df, use_container_width=True)
+        col_df = pd.DataFrame(res["col_results"])
+        show = [c for c in ["region", "success", "count", "error"] if c in col_df.columns]
+        st.dataframe(col_df[show] if show else col_df, use_container_width=True)
 
     with tab3:
-        col_df = pd.DataFrame(res["col_results"])
-        show = [c for c in ["region","success","count","error"] if c in col_df.columns]
-        st.dataframe(col_df[show], use_container_width=True)
-
-    with tab4:
         alerts = res["alerts"]
         if alerts:
             adf = pd.DataFrame(alerts)
-            adf["단계"] = adf["level"].map({"alarm":"🔴 경보","advisory":"🟡 주의보"})
-            show = [c for c in ["region","단계","current_streak","latest_sst","latest_date"] if c in adf.columns]
+            adf["단계"] = adf["level"].map({"alarm": "🔴 경보", "advisory": "🟡 주의보"})
+            show = [c for c in ["region", "단계", "current_streak", "latest_sst", "latest_date"] if c in adf.columns]
             st.dataframe(adf[show], use_container_width=True)
         else:
             st.info("현재 경보·주의보 지역 없음")
