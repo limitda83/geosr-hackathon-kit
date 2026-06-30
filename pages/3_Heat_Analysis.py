@@ -138,35 +138,58 @@ with tab2:
         st.info("지역 빈도 파일이 없습니다.")
 
 with tab3:
+    import datetime as _dt
+
+    _WEEKDAY_KO = ["월", "화", "수", "목", "금", "토", "일"]
+
+    def _date_label(img_path) -> str:
+        raw = img_path.stem.replace("KHOA_SST_L4_Z003_D01_WGS001K_U", "").replace("_HOT28", "")
+        try:
+            d = _dt.date(int(raw[:4]), int(raw[4:6]), int(raw[6:8]))
+            return f"{d.month}월 {d.day}일 ({_WEEKDAY_KO[d.weekday()]})"
+        except Exception:
+            return raw
+
     ts_imgs = sorted(TS_DIR.glob("SST_daily_mean_*.png"))
     hot_imgs = sorted(HOT_IMG_DIR.glob("*_HOT28.png"))
-    if hot_imgs:
-        hot_dates = [img.stem.rsplit("_", 1)[0].replace("KHOA_SST_L4_Z003_D01_WGS001K_U", "") for img in hot_imgs]
-        hot_pick = st.select_slider("날짜", options=list(range(len(hot_imgs))), format_func=lambda i: hot_dates[i])
-    else:
-        hot_pick = None
-        st.info("고수온 분석 지도가 없습니다.")
 
-    item1, item2, item3 = st.tabs(["일별 지도", "공간분포", "시계열"])
+    vt1, vt2 = st.tabs(["고수온 분포 지도", "일평균 SST 시계열"])
 
-    with item1:
-        if hot_pick is not None:
-            st.image(str(hot_imgs[hot_pick]), caption=hot_imgs[hot_pick].stem, width=620)
-
-    with item2:
+    with vt1:
         if hot_imgs:
-            preview = hot_imgs[:4]
-            cols = st.columns(2)
-            for idx, img in enumerate(preview):
-                with cols[idx % 2]:
-                    st.image(str(img), caption=img.stem, width=300)
-        else:
-            st.info("고수온 공간분포 결과가 없습니다.")
+            hot_labels = [_date_label(p) for p in hot_imgs]
 
-    with item3:
-        if ts_imgs:
-            center1, center2, center3 = st.columns([1, 2, 1])
-            with center2:
-                st.image(str(ts_imgs[0]), width=620)
+            if "hot_idx" not in st.session_state:
+                st.session_state.hot_idx = len(hot_imgs) - 1
+
+            nav_l, nav_slider, nav_r = st.columns([1, 8, 1])
+            with nav_l:
+                if st.button("◀", use_container_width=True) and st.session_state.hot_idx > 0:
+                    st.session_state.hot_idx -= 1
+            with nav_r:
+                if st.button("▶", use_container_width=True) and st.session_state.hot_idx < len(hot_imgs) - 1:
+                    st.session_state.hot_idx += 1
+            with nav_slider:
+                st.session_state.hot_idx = st.select_slider(
+                    "날짜",
+                    options=list(range(len(hot_imgs))),
+                    value=st.session_state.hot_idx,
+                    format_func=lambda i: hot_labels[i],
+                    label_visibility="collapsed",
+                )
+
+            idx = st.session_state.hot_idx
+            st.caption(f"28℃ 이상 고수온 구역 · {hot_labels[idx]} · {idx + 1}/{len(hot_imgs)}")
+            _, img_col, _ = st.columns([1, 6, 1])
+            with img_col:
+                st.image(str(hot_imgs[idx]), use_container_width=True)
         else:
-            st.info("일별 시계열 결과가 없습니다.")
+            st.info("고수온 분포 지도가 없습니다.")
+
+    with vt2:
+        if ts_imgs:
+            _, c2, _ = st.columns([1, 6, 1])
+            with c2:
+                st.image(str(ts_imgs[0]), use_container_width=True)
+        else:
+            st.info("일평균 SST 결과가 없습니다.")
