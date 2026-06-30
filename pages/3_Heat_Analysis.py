@@ -143,6 +143,79 @@ if not monthly_df.empty:
 
 st.markdown("---")
 
+# ── 고수온 ∩ 저염분 공통지역 (hot_lowsal.py 결과) ─────────
+st.subheader("🧪 고수온 ∩ 저염분 공통지역 분석")
+
+HOTLOWSAL_DIR = Path("data/results/hotlowsal")
+SUMMARY_CSV   = HOTLOWSAL_DIR / "summary_hotlowsal.csv"
+
+@st.cache_data(ttl=300)
+def load_hotlowsal_summary():
+    if not SUMMARY_CSV.exists():
+        return None
+    df = pd.read_csv(SUMMARY_CSV, encoding="utf-8-sig", parse_dates=["date"])
+    return df[df["error"].isna() | (df["error"] == "")].copy() if "error" in df.columns else df
+
+@st.cache_data(ttl=300)
+def load_hotlowsal_day(date_str: str):
+    path = HOTLOWSAL_DIR / "csv" / f"HOTLOWSAL_{date_str.replace('-','')}.csv"
+    if not path.exists():
+        return None
+    return pd.read_csv(path, encoding="utf-8-sig")
+
+summary_df = load_hotlowsal_summary()
+
+if summary_df is None or summary_df.empty:
+    st.info("`src/hot_lowsal.py`를 실행하면 이 섹션에 결과가 표시됩니다.\n\n"
+            "```bash\npython src/hot_lowsal.py --start 2025-07-01 --end 2025-08-31\n```")
+else:
+    # 날짜별 격자 수 추이
+    col1, col2, col3 = st.columns(3)
+    col1.metric("총 분석일", f"{len(summary_df)}일")
+    col2.metric("평균 공통 격자 수", f"{summary_df['both_count'].mean():,.0f}")
+    col3.metric("최대 공통 격자 수", f"{summary_df['both_count'].max():,.0f}")
+
+    fig_hl = go.Figure()
+    fig_hl.add_trace(go.Scatter(x=summary_df["date"], y=summary_df["hot_count"],
+                                name="고수온 격자", line=dict(color="#ff6b35")))
+    fig_hl.add_trace(go.Scatter(x=summary_df["date"], y=summary_df["lowsal_count"],
+                                name="저염분 격자", line=dict(color="#00c2d4")))
+    fig_hl.add_trace(go.Scatter(x=summary_df["date"], y=summary_df["both_count"],
+                                name="공통(고수온∩저염분)", line=dict(color="#00e5ff", width=2.5),
+                                fill="tozeroy", fillcolor="rgba(0,229,255,0.08)"))
+    fig_hl.update_layout(
+        xaxis_title="날짜", yaxis_title="격자 수",
+        hovermode="x unified", height=380,
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        font_color="#c8e6f0", legend_title="유형",
+        margin=dict(t=20, b=40),
+    )
+    st.plotly_chart(fig_hl, use_container_width=True)
+
+    # 특정 날짜 지도
+    st.markdown("##### 날짜별 공통지역 지도")
+    date_options = summary_df["date"].dt.strftime("%Y-%m-%d").tolist()
+    sel_date = st.selectbox("날짜 선택", date_options, index=len(date_options)//2)
+    day_df = load_hotlowsal_day(sel_date)
+
+    if day_df is not None and not day_df.empty:
+        try:
+            import folium
+            from streamlit_folium import st_folium
+            m = folium.Map(location=[day_df["lat"].mean(), day_df["lon"].mean()],
+                           zoom_start=7, tiles="CartoDB dark_matter")
+            heat_data = day_df[["lat", "lon", "sst_celsius"]].values.tolist()
+            from folium.plugins import HeatMap
+            HeatMap(heat_data, radius=8, blur=6,
+                    gradient={"0.4": "#00c2d4", "0.7": "#ff6b35", "1.0": "#ff0000"}).add_to(m)
+            st_folium(m, width=None, height=420, use_container_width=True)
+        except Exception as e:
+            st.warning(f"지도 오류: {e}")
+    else:
+        st.info(f"{sel_date} 공통지역 CSV 파일이 없습니다.")
+
+st.markdown("---")
+
 # ── 원본 데이터 테이블 ───────────────────────────────────
 with st.expander("📋 원본 데이터 보기"):
     tab_list = st.tabs(selected)
