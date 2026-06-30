@@ -378,8 +378,44 @@ else:
     day_df = load_hotlowsal_day(sel_date)
     if day_df is not None and not day_df.empty:
         try:
-            deck = make_hotlowsal_heatmap(day_df)
-            st.pydeck_chart(deck, use_container_width=True, height=420)
+            import plotly.express as px
+            # 20k+ 포인트 → 성능을 위해 최대 8000개 샘플링
+            plot_df = day_df.sample(min(8000, len(day_df)), random_state=42) if len(day_df) > 8000 else day_df
+            fig_map = px.scatter_mapbox(
+                plot_df,
+                lat="lat", lon="lon",
+                color="sst_celsius",
+                color_continuous_scale=[
+                    [0.0, "#00c2d4"],
+                    [0.4, "#00e5ff"],
+                    [0.7, "#ff8c00"],
+                    [1.0, "#ff1a1a"],
+                ],
+                range_color=[plot_df["sst_celsius"].quantile(0.05),
+                             plot_df["sst_celsius"].quantile(0.95)],
+                zoom=5.5,
+                center={"lat": 34.5, "lon": 127.5},
+                mapbox_style="carto-darkmatter",
+                opacity=0.75,
+                size_max=4,
+                labels={"sst_celsius": "SST (°C)"},
+                hover_data={"lat": ":.2f", "lon": ":.2f", "sst_celsius": ":.1f"},
+            )
+            fig_map.update_traces(marker=dict(size=3))
+            fig_map.update_layout(
+                height=460,
+                margin=dict(t=0, b=0, l=0, r=0),
+                paper_bgcolor="rgba(0,0,0,0)",
+                coloraxis_colorbar=dict(
+                    title="SST °C",
+                    tickfont=dict(color="#c8e6f0"),
+                    titlefont=dict(color="#c8e6f0"),
+                    bgcolor="rgba(2,13,26,0.8)",
+                    bordercolor="rgba(0,194,212,0.2)",
+                ),
+            )
+            st.plotly_chart(fig_map, use_container_width=True)
+            st.caption(f"표시 격자: {len(plot_df):,}개 / 전체 {len(day_df):,}개")
         except Exception as e:
             st.warning(f"지도 오류: {e}")
     else:
