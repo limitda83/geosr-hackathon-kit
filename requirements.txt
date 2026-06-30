@@ -5,4 +5,7 @@ pandas
 plotly
 folium
 streamlit-folium
-anthropic
+openai
+python-docx
+netCDF4
+numpy

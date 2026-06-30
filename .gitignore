@@ -1,1 +1,5 @@
 submit/
+.streamlit/secrets.toml
+data/raw/
+__pycache__/
+*.pyc
