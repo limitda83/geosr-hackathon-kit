@@ -19,6 +19,42 @@ def _iso(d) -> str | None:
     return d.isoformat() if hasattr(d, "isoformat") else str(d)
 
 
+# 실제 피해 발생 기사 판별용 기본 키워드(제목/본문에 하나라도 포함되면 통과)
+# 주의: '양식/어가/경보' 등은 거의 모든 고수온 기사에 있어 필터 효과가 없으므로 제외
+DAMAGE_TERMS = ("피해", "폐사", "집단폐사", "적조", "떼죽음")
+
+# 실제 '발생'이 아닌 대응·예방·정책·홍보·보험 기사 배제(제목에 있으면 제외)
+EXCLUDE_TITLE_TERMS = ("방류", "예방", "대비", "예찰", "점검", "캠페인",
+                       "협약", "간담회", "홍보", "축제", "시식", "분양",
+                       "종자", "치어", "보험", "가입", "대응", "가동",
+                       "추진", "육성", "과제", "발령", "지급", "공모",
+                       "성과", "지원")
+
+
+def _article_text(a) -> str:
+    return f"{a.title or ''} {a.description or ''}"
+
+
+def filter_articles(articles, must_include=None, any_of=None,
+                    any_of_title=None, exclude_title=None):
+    """must_include: 모두 포함(AND, 제목+본문) / any_of: 하나 이상(OR, 제목+본문)
+    / any_of_title: 제목에 하나 이상(실제 '발생' 기사 판별) / exclude_title: 제목에 있으면 제외."""
+    out = []
+    for a in articles:
+        t = _article_text(a)
+        title = a.title or ""
+        if must_include and not all(k in t for k in must_include):
+            continue
+        if any_of and not any(k in t for k in any_of):
+            continue
+        if any_of_title and not any(k in title for k in any_of_title):
+            continue
+        if exclude_title and any(k in title for k in exclude_title):
+            continue
+        out.append(a)
+    return out
+
+
 def crawl(keywords, max_items=100, allow_seed=True, force_seed=False,
           since=None, until=None, search_field="제목"):
     """소스 우선순위: (강제시드) → 공공데이터(한국언론진흥재단) → 네이버 → RSS → 시드."""
@@ -88,7 +124,8 @@ class RunReport:
 def run_pipeline(disaster_type="고수온", keywords=None, max_items=100,
                  since=None, until=None, top_n=3,
                  db_path=None, aoi_path=None,
-                 allow_seed=True, force_seed=False, search_field="제목") -> RunReport:
+                 allow_seed=True, force_seed=False, search_field="제목",
+                 damage_only=False, damage_terms=None) -> RunReport:
     config.ensure_dirs()
     keywords = keywords or [disaster_type]
     db_path = db_path or config.EVENTS_DB
@@ -98,6 +135,9 @@ def run_pipeline(disaster_type="고수온", keywords=None, max_items=100,
                                   allow_seed=allow_seed, force_seed=force_seed,
                                   since=_iso(since), until=_iso(until),
                                   search_field=search_field)
+    if damage_only:
+        articles = filter_articles(articles, any_of_title=list(damage_terms or DAMAGE_TERMS),
+                                   exclude_title=list(EXCLUDE_TITLE_TERMS))
     now = datetime.now(timezone.utc).isoformat()
     records, n_located = _to_records(articles, disaster_type, now)
 
@@ -159,7 +199,8 @@ def export_team_csv(db_path=None):
 
 def ingest_bigkinds(path, disaster_type="고수온", keyword=None,
                     since=None, until=None, top_n=3,
-                    db_path=None, aoi_path=None) -> RunReport:
+                    db_path=None, aoi_path=None,
+                    damage_only=False, damage_terms=None) -> RunReport:
     """빅카인즈 엑셀/CSV를 읽어 DB에 누적하고 AOI를 재계산(2025 등 과거 실데이터).
 
     keyword 지정 시 제목/본문에 포함된 기사만 적재(관련성 필터).
@@ -173,6 +214,9 @@ def ingest_bigkinds(path, disaster_type="고수온", keyword=None,
         kw = keyword.strip()
         articles = [a for a in articles
                     if kw in (a.title or "") or kw in (a.description or "")]
+    if damage_only:
+        articles = filter_articles(articles, any_of_title=list(damage_terms or DAMAGE_TERMS),
+                                   exclude_title=list(EXCLUDE_TITLE_TERMS))
 
     now = datetime.now(timezone.utc).isoformat()
     records, n_located = _to_records(articles, disaster_type, now)

@@ -23,6 +23,7 @@ pyshp>=2.3.0
 plotly
 folium
 streamlit-folium
+pydeck
 
 # --- AI 챗봇 ---
 openai

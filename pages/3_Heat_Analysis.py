@@ -1,122 +1,143 @@
-import re
-import streamlit as st
-import pandas as pd
 from pathlib import Path
-from utils.style import apply
+
+import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
+import streamlit as st
+
+from agents.alert_agent import get_active_alerts
+from utils.alert_widget import inject_alerts
 from utils.chat_widget import inject
+from utils.style import apply
 
 st.set_page_config(page_title="Heat Analysis", page_icon="🌡️", layout="wide")
-# 공통 스타일/챗 위젯 (secrets.toml 미설정 등으로 실패해도 페이지는 계속 동작)
-try:
-    apply()
-except Exception:
-    pass
-try:
-    inject()
-except Exception:
-    pass
-st.title("🌡️ Heat Analysis — 해수면온도 분석")
+apply()
+inject()
+inject_alerts(get_active_alerts())
 
-# ── 실제 산출물 경로 (src/sst_*.py 파이프라인 출력 위치) ──────────────
-RAW_NC_DIR   = Path("data/input/khoa_sst")                       # 원천 일별 SST
-SST_ANALYSIS = Path("data/results/sst_analysis")
-HOT_NC_DIR   = SST_ANALYSIS / "sst_over28"                       # 28도↑ 고수온 NC
-HOT_IMG_DIR  = SST_ANALYSIS / "sst_over28" / "img"               # 일별 28도↑ 지도(62장)
-PERSIST_DIR  = SST_ANALYSIS / "persistence"                      # 누적빈도/연속 NC·지도
-REGION_FREQ  = Path("data/results/frequency/region_frequency.csv")
+st.title("🌡️ 해수면온도 분석")
+st.caption("실제 수집된 SST CSV로 지역별 고수온 추세를 비교합니다.")
+
+DATA_DIR = Path("data")
+DEFAULT_THRESHOLD = 28.0
+CONSEC_MIN = 3
+FREQ_MIN = 2
 
 
-@st.cache_data
-def load_region_list():
-    if REGION_FREQ.exists():
-        df = pd.read_csv(REGION_FREQ)
-        return df["location"].tolist()
-    return ["통영", "여수", "부산", "거제", "완도"]
+@st.cache_data(ttl=300)
+def load_region_freq() -> pd.DataFrame:
+    freq_path = Path("data/results/frequency/region_frequency.csv")
+    return pd.read_csv(freq_path, encoding="utf-8") if freq_path.exists() else pd.DataFrame()
 
 
-def latest_png(d: Path, pattern: str):
-    """폴더에서 패턴에 맞는 가장 최근 PNG 경로 (없으면 None)."""
-    if not d.exists():
-        return None
-    files = sorted(d.glob(pattern))
-    return files[-1] if files else None
+@st.cache_data(ttl=300)
+def load_sst_by_region() -> dict[str, pd.DataFrame]:
+    result: dict[str, pd.DataFrame] = {}
+    for f in sorted(DATA_DIR.glob("*_2025*.csv")):
+        region = f.stem.split("_")[0]
+        if region in {"geocode", "regions", "Tongyeong"}:
+            continue
+        df = pd.read_csv(f, encoding="utf-8", parse_dates=["date"])
+        if {"date", "sst", "source"}.issubset(df.columns) and df["source"].iloc[0] == "KHOA_OPeNDAP":
+            result[region] = df.sort_values("date").reset_index(drop=True)
+    return result
 
 
-def list_daily_images(img_dir: Path):
-    """일별 고수온 이미지들을 {'YYYY-MM-DD': 경로} 로 (날짜순)."""
-    out = {}
-    if img_dir.exists():
-        for p in sorted(img_dir.glob("*_HOT*.png")):
-            m = re.search(r"(\d{8})", p.name)
-            if m:
-                d = m.group(1)
-                out[f"{d[:4]}-{d[4:6]}-{d[6:]}"] = p
-    return out
+def calc_hot_stats(df: pd.DataFrame, threshold: float) -> dict:
+    sst = df["sst"].values
+    hot_mask = sst >= threshold
+    hot_freq = int(hot_mask.sum())
+    max_consec = 0
+    cur = 0
+    for v in hot_mask:
+        cur = cur + 1 if v else 0
+        max_consec = max(max_consec, cur)
+    return {
+        "avg": float(pd.Series(sst).mean()),
+        "max": float(pd.Series(sst).max()),
+        "hot_freq": hot_freq,
+        "max_consec": max_consec,
+        "persist2": hot_freq >= FREQ_MIN,
+        "persist3": max_consec >= CONSEC_MIN,
+    }
 
 
-def show_img(path, title: str, expected: str = ""):
-    """이미지가 있으면 표시, 없으면 안내. (Streamlit 버전별 폭 인자 호환 처리)"""
-    if path and Path(path).exists():
-        try:
-            st.image(str(path), caption=title, use_container_width=True)
-        except TypeError:                       # 구버전: use_column_width 사용
-            st.image(str(path), caption=title, use_column_width=True)
-    else:
-        st.info(f"분석 결과 없음 — 수집·전처리 스크립트 실행 후 표시됩니다.\n\n"
-                f"예상 경로: `{expected or path}`")
+freq_df = load_region_freq()
+sst_data = load_sst_by_region()
 
+if not sst_data:
+    st.warning("수집된 SST CSV가 없습니다. 먼저 `data/*_2025*.csv` 파일을 생성하세요.")
+    st.stop()
 
-regions = load_region_list()
-selected_region = st.selectbox("분석 대상 지역 선택", regions)
+regions = sorted(sst_data.keys())
+selected = st.multiselect("분석 대상 지역", regions, default=regions[: min(3, len(regions))])
+threshold = st.slider("고수온 기준(℃)", 24.0, 32.0, DEFAULT_THRESHOLD, 0.5)
 
-st.markdown("---")
+if not selected:
+    st.info("분석할 지역을 하나 이상 선택하세요.")
+    st.stop()
 
-# ── 파일 상태 (실제 산출물 개수) ──────────────────────────────────
-st.subheader("📁 파일 상태")
-col1, col2, col3 = st.columns(3)
-with col1:
-    n_raw = len(list(RAW_NC_DIR.glob("*.nc"))) if RAW_NC_DIR.exists() else 0
-    st.metric("원천 SST NC", f"{n_raw}개")
-    st.caption(f"`{RAW_NC_DIR}/`")
-with col2:
-    n_hot = len(list(HOT_NC_DIR.glob("*_HOT*.nc"))) if HOT_NC_DIR.exists() else 0
-    st.metric("28도↑ 고수온 NC", f"{n_hot}개")
-    st.caption(f"`{HOT_NC_DIR}/`")
-with col3:
-    n_ana = len(list(PERSIST_DIR.glob("*.nc"))) if PERSIST_DIR.exists() else 0
-    st.metric("분석 NC (누적·연속)", f"{n_ana}개")
-    st.caption(f"`{PERSIST_DIR}/`")
+stats = {r: calc_hot_stats(sst_data[r], threshold) for r in selected}
+
+summary_cols = st.columns(len(selected))
+for col, region in zip(summary_cols, selected):
+    s = stats[region]
+    col.metric(region, f"평균 {s['avg']:.1f}℃", f"최고 {s['max']:.1f}℃")
+    col.caption(f"고수온 {s['hot_freq']}일 · 최장 연속 {s['max_consec']}일")
+
+flags = st.columns(2)
+flags[0].success(f"누적 {FREQ_MIN}일 이상 지역: {sum(1 for r in selected if stats[r]['persist2'])}개")
+flags[1].warning(f"연속 {CONSEC_MIN}일 이상 지역: {sum(1 for r in selected if stats[r]['persist3'])}개")
 
 st.markdown("---")
 
-# ── 전처리 결과 요약 ──────────────────────────────────────────────
-st.subheader("⚙️ 전처리 결과 요약")
-col1, col2, col3 = st.columns(3)
-col1.success("✅ EPSG:4326 (WGS84) 적용")
-col2.success("✅ 유효 범위 필터링 (0~40°C)")
-col3.info("🌊 배경지도: Natural Earth 해안선")
-
-st.markdown("---")
-
-# ── 분석 결과 지도 (실제 산출물 연결) ─────────────────────────────
-tab1, tab2, tab3 = st.tabs(["28도↑ 격자 (일별)", "2일↑ 누적 빈도", "최대 연속 지속일수"])
+tab1, tab2, tab3 = st.tabs(["추세", "빈도", "원본"])
 
 with tab1:
-    imgs = list_daily_images(HOT_IMG_DIR)
-    if imgs:
-        days = list(imgs.keys())
-        sel_day = st.select_slider("날짜 선택", options=days, value=days[-1])
-        show_img(imgs[sel_day], f"{sel_day} · 28°C 이상 고수온 영역")
-        st.caption(f"일별 28도↑ 지도 {len(imgs)}장 · 자료: `{HOT_IMG_DIR}/`")
-    else:
-        show_img(None, "", expected=f"{HOT_IMG_DIR}/*_HOT28.png")
+    st.subheader("일별 SST 추이")
+    fig = go.Figure()
+    for region in selected:
+        df = sst_data[region].sort_values("date")
+        fig.add_trace(go.Scatter(x=df["date"], y=df["sst"], mode="lines", name=region))
+    fig.add_hline(y=threshold, line_dash="dash", line_color="#ff6b35")
+    fig.update_layout(
+        xaxis_title="날짜",
+        yaxis_title="SST (℃)",
+        hovermode="x unified",
+        height=360,
+        margin=dict(t=10, b=20, l=20, r=10),
+        legend=dict(orientation="h", y=-0.2),
+    )
+    st.plotly_chart(fig, use_container_width=True)
 
 with tab2:
-    show_img(latest_png(PERSIST_DIR, "SST_HOTFREQ_28C_*.png"),
-             "2일 이상 누적 고수온 빈도 (분석기간 중 28°C 이상이었던 누적 일수)",
-             expected=f"{PERSIST_DIR}/SST_HOTFREQ_28C_*.png")
+    st.subheader("관심 지역 언급 빈도")
+    if not freq_df.empty:
+        fig2 = px.bar(
+            freq_df.sort_values("count", ascending=True).head(12),
+            x="count",
+            y="location",
+            orientation="h",
+            labels={"count": "언급 수", "location": "지역"},
+            color="count",
+            color_continuous_scale=["#bfefff", "#00c2d4", "#005f6e"],
+        )
+        fig2.update_layout(
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            showlegend=False,
+            height=320,
+            margin=dict(l=10, r=10, t=10, b=10),
+        )
+        st.plotly_chart(fig2, use_container_width=True)
+    else:
+        st.info("지역 빈도 파일이 없습니다.")
 
 with tab3:
-    show_img(latest_png(PERSIST_DIR, "SST_MAXCONSEC_28C_*.png"),
-             "동일격자 28°C 최대 연속 지속일수 (3일↑ 연속 고수온 공간분포)",
-             expected=f"{PERSIST_DIR}/SST_MAXCONSEC_28C_*.png")
+    st.subheader("원본 SST 데이터")
+    for region in selected:
+        with st.expander(region, expanded=False):
+            df = sst_data[region].copy()
+            df["date"] = df["date"].dt.strftime("%Y-%m-%d")
+            show_cols = [c for c in ["date", "lat", "lon", "sst", "source"] if c in df.columns]
+            st.dataframe(df[show_cols].head(100), use_container_width=True, height=260)

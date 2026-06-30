@@ -2,6 +2,8 @@
 submit/
 
 # API 키
+.env
+.env.*
 .streamlit/secrets.toml
 
 # 대용량 데이터 (SST 등)

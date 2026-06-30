@@ -14,6 +14,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pandas as pd
+from src.news.gazetteer import GAZETTEER, build_alias_index
 
 # ---------------------------------------------------------------------------
 # 경로 설정
@@ -23,57 +24,13 @@ _EVENTS_PATH = _REPO_ROOT / "data" / "processed" / "disaster_db" / "disaster_eve
 _FREQ_DIR = _REPO_ROOT / "data" / "results" / "frequency"
 _FREQ_PATH = _FREQ_DIR / "region_frequency.csv"
 
-# ---------------------------------------------------------------------------
-# 연안 지역 위경도 하드코딩 dict (Nominatim 호출 없이 즉시 반환)
-# ---------------------------------------------------------------------------
-COASTAL_COORDS: dict[str, tuple[float, float]] = {
-    "통영": (34.8544, 128.4333),
-    "여수": (34.7604, 127.6622),
-    "부산": (35.1796, 129.0756),
-    "거제": (34.8797, 128.6211),
-    "완도": (34.3114, 126.7552),
-    "고흥": (34.6042, 127.2756),
-    "남해": (34.8378, 127.8925),
-    "사천": (35.0036, 128.0644),
-    "창원": (35.2279, 128.6811),
-    "포항": (36.0190, 129.3435),
-    "울산": (35.5384, 129.3114),
-    "목포": (34.8118, 126.3922),
-    "진도": (34.4867, 126.2636),
-    "강진": (34.6414, 126.7672),
-    "해남": (34.5739, 126.5990),
-    "신안": (34.8396, 126.1069),
-    "보성": (34.7711, 127.0800),
-    "장흥": (34.6817, 126.9078),
-    "순천": (34.9506, 127.4874),
-    "광양": (34.9408, 127.6961),
-    "하동": (35.0672, 127.7514),
-    "고성": (34.9733, 128.3231),
-    "마산": (35.1836, 128.5742),
-    "진해": (35.1456, 128.6611),
-    "울진": (36.9929, 129.4003),
-    "영덕": (36.4153, 129.3650),
-    "경주": (35.8562, 129.2247),
-    "동해": (37.5247, 129.1144),
-    "강릉": (37.7519, 128.8760),
-    "속초": (38.2070, 128.5919),
-    "삼척": (37.4499, 129.1650),
-    "태안": (36.7456, 126.2983),
-    "서산": (36.7848, 126.4500),
-    "보령": (36.3331, 126.6128),
-    "군산": (35.9678, 126.7368),
-    "부안": (35.7317, 126.7331),
-    "영광": (35.2772, 126.5122),
-    "인천": (37.4563, 126.7052),
-    "안산": (37.3219, 126.8309),
-    "평택": (36.9921, 127.1128),
-    "제주": (33.4996, 126.5312),
-    "서귀포": (33.2541, 126.5600),
-    "울릉도": (37.4845, 130.9057),
-    "독도": (37.2426, 131.8647),
-    "홍도": (34.6867, 125.1869),
-    "흑산도": (34.6827, 125.4344),
-}
+# gazetteer 기반 별칭→위경도 인덱스 (하드코딩 제거)
+_ALIAS_INDEX = build_alias_index()
+COASTAL_COORDS: dict[str, tuple[float, float]] = {}
+for alias, key in _ALIAS_INDEX:
+    info = GAZETTEER[key]
+    if alias not in COASTAL_COORDS:
+        COASTAL_COORDS[alias] = (info.lat, info.lon)
 
 # ---------------------------------------------------------------------------
 # 샘플 데이터 (disaster_events.csv 없을 때 fallback)
@@ -149,8 +106,7 @@ def load_disaster_events() -> pd.DataFrame:
         print(f"[region_extractor] loaded {len(df)} rows from {_EVENTS_PATH}")
         return df
 
-    print(f"[region_extractor] {_EVENTS_PATH} not found -> using sample data ({len(_SAMPLE_EVENTS)} rows)")
-    return pd.DataFrame(_SAMPLE_EVENTS, columns=["date", "location", "keyword", "title", "url"])
+    raise FileNotFoundError(f"{_EVENTS_PATH} not found")
 
 
 def extract_regions(df: pd.DataFrame) -> pd.DataFrame:
