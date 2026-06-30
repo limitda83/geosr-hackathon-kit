@@ -5,7 +5,8 @@ import streamlit.components.v1 as components
 def inject():
     api_key = st.secrets.get("OPENAI_API_KEY", "")
 
-    components.html(f"""
+    components.html(f"""<!DOCTYPE html>
+<html><head></head><body>
 <script>
 (function() {{
   var doc = window.parent.document;
@@ -160,4 +161,7 @@ def inject():
   }});
 }})();
 </script>
+
+</script>
+</body></html>
 """, height=1, scrolling=False)
