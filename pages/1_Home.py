@@ -1,10 +1,69 @@
+import pandas as pd
 import streamlit as st
+from pathlib import Path
 from utils.style import apply, card, section, hero
 from utils.chat_widget import inject
 
 st.set_page_config(page_title="Home", page_icon="🌊", layout="wide")
 apply()
 inject()
+
+# ── 실제 데이터 로드 ─────────────────────────────────────
+@st.cache_data(ttl=300)
+def load_stats():
+    stats = {}
+
+    # 재난 뉴스 수집 건수
+    news_path = Path("data/processed/disaster_db/disaster_events.csv")
+    if news_path.exists():
+        news_df = pd.read_csv(news_path, encoding="utf-8")
+        stats["news_count"] = len(news_df)
+        dates = pd.to_datetime(news_df["date"], errors="coerce").dropna()
+        if not dates.empty:
+            stats["news_period"] = f"{dates.min().strftime('%Y.%m')} ~ {dates.max().strftime('%Y.%m')}"
+        else:
+            stats["news_period"] = "2025.06 ~ 08"
+    else:
+        stats["news_count"] = None
+        stats["news_period"] = "2025.06 ~ 08"
+
+    # SST 수집 건수 (지역별 CSV 합산)
+    sst_total = 0
+    sst_regions = 0
+    hot_regions = []
+    for f in sorted(Path("data").glob("*_2025*.csv")):
+        region = f.stem.split("_")[0]
+        if region in ("geocode", "regions", "Tongyeong"):
+            continue
+        try:
+            df = pd.read_csv(f, encoding="utf-8")
+            if "sst" in df.columns and df.get("source", pd.Series([""])).iloc[0] == "KHOA_OPeNDAP":
+                sst_total += df["sst"].notna().sum()
+                sst_regions += 1
+                # 이상 탐지: 28°C 연속 3일 이상
+                hot = df["sst"] >= 28.0
+                cur = max_c = 0
+                for v in hot:
+                    cur = cur + 1 if v else 0
+                    max_c = max(max_c, cur)
+                if max_c >= 3:
+                    hot_regions.append(region)
+        except Exception:
+            pass
+
+    stats["sst_count"] = sst_total if sst_total > 0 else None
+    stats["sst_regions"] = sst_regions
+    stats["hot_regions"] = hot_regions
+    return stats
+
+s = load_stats()
+
+news_val    = f"{s['news_count']:,}건" if s["news_count"] else "수집 중"
+news_sub    = s["news_period"]
+sst_val     = f"{s['sst_count']:,}건" if s["sst_count"] else "수집 중"
+sst_sub     = f"KHOA OPeNDAP · {s['sst_regions']}개 지역"
+hot_val     = f"{len(s['hot_regions'])}지역" if s["hot_regions"] else "해당 없음"
+hot_sub     = ", ".join(s["hot_regions"]) if s["hot_regions"] else "연속 3일↑ 기준"
 
 hero(
     "🌊 고수온 연안재해 모니터링",
@@ -14,10 +73,10 @@ hero(
 # 핵심 지표
 section("핵심 분석 지표", "📡")
 c1, c2, c3, c4 = st.columns(4)
-with c1: card("재난 뉴스 수집", "47건", "2025.06 ~ 08", "📰")
-with c2: card("수온 데이터", "1,247건", "KOSC SST API", "🌡️")
-with c3: card("28°C↑ 격자", "분석 중", "고수온 필터", "🔥")
-with c4: card("이상 탐지", "3지역", "연속 3일↑", "⚠️")
+with c1: card("재난 뉴스 수집", news_val, news_sub, "📰")
+with c2: card("SST 수집", sst_val, sst_sub, "🌡️")
+with c3: card("고수온 이상탐지", hot_val, hot_sub, "⚠️")
+with c4: card("분석 지역", f"{s['sst_regions']}개", "KHOA 실측 데이터", "🗺️")
 
 # 전체 흐름
 section("분석 파이프라인", "🔄")
