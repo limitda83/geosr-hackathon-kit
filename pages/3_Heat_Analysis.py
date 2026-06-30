@@ -6,10 +6,13 @@ import plotly.express as px
 from pathlib import Path
 from utils.style import apply
 from utils.chat_widget import inject
+from utils.alert_widget import inject_alerts
+from agents.alert_agent import get_active_alerts
 
 st.set_page_config(page_title="Heat Analysis", page_icon="🌡️", layout="wide")
 apply()
 inject()
+inject_alerts(get_active_alerts())
 
 st.title("🌡️ Heat Analysis — 해수면온도 분석")
 
@@ -156,14 +159,15 @@ st.markdown("---")
 SST_HOT_DIR   = Path("data/sst/hot")
 SST_PERS_DIR  = Path("data/sst/persistence")
 
-def show_images(paths: list[Path], cols: int = 2):
+def show_images(paths: list[Path], cols: int = 3):
     if not paths:
         return False
     rows = [paths[i:i+cols] for i in range(0, len(paths), cols)]
     for row in rows:
         cs = st.columns(len(row))
         for c, p in zip(cs, row):
-            c.image(str(p), caption=p.stem, use_container_width=True)
+            with c:
+                st.image(str(p), caption=p.stem, width=300)
     return True
 
 SST_TS_DIR = Path("data/sst/timeseries")
@@ -173,34 +177,36 @@ tab1, tab2, tab3, tab4 = st.tabs(["🗺️ 일별 고수온 지도", "🟠 누�
 with tab1:
     imgs = sorted((SST_HOT_DIR / "img").glob("*.png")) if (SST_HOT_DIR / "img").exists() else []
     if imgs:
-        # 날짜 슬라이더로 탐색
         dates = [p.stem.split("_U")[-1].replace("_HOT28", "") for p in imgs]
         dates_fmt = [f"{d[:4]}-{d[4:6]}-{d[6:]}" for d in dates]
-        idx = st.select_slider("날짜 선택", options=range(len(dates_fmt)),
-                               format_func=lambda i: dates_fmt[i], value=0)
-        st.image(str(imgs[idx]), caption=f"{dates_fmt[idx]} 고수온(28°C↑) 분포",
-                 use_container_width=True)
-        st.caption(f"총 {len(imgs)}일치 이미지 — 슬라이더로 날짜를 이동하세요.")
+        col_sl, col_img = st.columns([1, 2])
+        with col_sl:
+            idx = st.select_slider("날짜 선택", options=range(len(dates_fmt)),
+                                   format_func=lambda i: dates_fmt[i], value=0)
+            st.caption(f"총 {len(imgs)}일치")
+        with col_img:
+            st.image(str(imgs[idx]), caption=f"{dates_fmt[idx]} 고수온(28°C↑) 분포", width=480)
     else:
         st.info("분석 결과 이미지가 없습니다.\n\n"
                 "```bash\npython src/run_pipeline.py data/khoa_sst data/sst/hot data/sst/persistence\n```")
 
 with tab2:
     imgs = sorted(SST_PERS_DIR.glob("SST_HOTFREQ*.png"))
-    if not show_images(imgs, cols=1):
+    if not show_images(imgs, cols=2):
         st.info("누적 빈도 지도가 없습니다. `run_pipeline.py` 실행 후 표시됩니다.")
 
 with tab3:
     imgs = sorted(SST_PERS_DIR.glob("SST_MAXCONSEC*.png"))
-    if not show_images(imgs, cols=1):
+    if not show_images(imgs, cols=2):
         st.info("최장 연속 지도가 없습니다. `run_pipeline.py` 실행 후 표시됩니다.")
 
 with tab4:
     ts_png = sorted(SST_TS_DIR.glob("SST_daily_mean_*.png")) if SST_TS_DIR.exists() else []
     ts_csv = sorted(SST_TS_DIR.glob("SST_daily_mean_*.csv")) if SST_TS_DIR.exists() else []
     if ts_png:
-        st.image(str(ts_png[0]), caption="일평균 SST 추이 (2025-07-01 ~ 08-31)",
-                 use_container_width=True)
+        col_l, col_r = st.columns([2, 1])
+        with col_l:
+            st.image(str(ts_png[0]), caption="일평균 SST 추이 (2025-07-01 ~ 08-31)", width=600)
     if ts_csv:
         ts_df = pd.read_csv(ts_csv[0])
         with st.expander("원본 CSV 보기"):
@@ -210,8 +216,9 @@ with tab4:
 
 st.markdown("---")
 
-# ── 고수온 감지 달력 히트맵 ──────────────────────────────
+# ── 고수온 감지 달력 + 지역별 시계열 ────────────────────
 st.subheader("🗓️ 지역별 고수온 감지 달력")
+st.caption(f"각 칸 = 해당 월의 고수온(≥{threshold}°C) 감지 일수. 숫자가 클수록 진한 색.")
 
 calendar_rows = []
 for region in selected:
@@ -226,15 +233,58 @@ for region in selected:
         })
 
 cal_df = pd.DataFrame(calendar_rows)
-if not cal_df.empty:
-    pivot = cal_df.pivot(index="지역", columns="월", values="고수온 일수")
-    fig_cal = px.imshow(
-        pivot, color_continuous_scale="YlOrRd", zmin=0,
-        text_auto=True,
-        labels={"color": f"고수온 일수 (≥{threshold}°C)"},
+
+col_cal, col_ts = st.columns([1, 1])
+
+with col_cal:
+    if not cal_df.empty:
+        pivot = cal_df.pivot(index="지역", columns="월", values="고수온 일수")
+        fig_cal = px.imshow(
+            pivot, color_continuous_scale="YlOrRd", zmin=0,
+            text_auto=True,
+            labels={"color": f"고수온 일수 (≥{threshold}°C)"},
+        )
+        fig_cal.update_layout(
+            height=80 + 60 * len(selected),
+            margin=dict(t=10, b=20),
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            font_color="#c8e6f0",
+        )
+        st.plotly_chart(fig_cal, use_container_width=True)
+
+with col_ts:
+    st.caption("지역별 일별 SST 시계열 — 고수온 구간(빨간 음영) 강조")
+    fig_ts = go.Figure()
+    colors = ["#00c2d4", "#00e5ff", "#00a896", "#ff6b35", "#7aacbf", "#ffb347"]
+    for i, region in enumerate(selected):
+        df = sst_data[region].sort_values("date")
+        color = colors[i % len(colors)]
+        hot = df["sst"] >= threshold
+        # 고수온 구간 음영
+        fig_ts.add_trace(go.Scatter(
+            x=pd.concat([df["date"], df["date"][::-1]]),
+            y=pd.concat([df["sst"].where(hot, threshold),
+                         pd.Series([threshold] * len(df))]),
+            fill="toself", fillcolor="rgba(255,80,0,0.10)",
+            line=dict(width=0), showlegend=False, hoverinfo="skip",
+        ))
+        fig_ts.add_trace(go.Scatter(
+            x=df["date"], y=df["sst"],
+            mode="lines", name=region,
+            line=dict(color=color, width=1.8),
+            hovertemplate=f"{region} %{{x|%m/%d}} %{{y:.1f}}°C<extra></extra>",
+        ))
+    fig_ts.add_hline(y=threshold, line_dash="dash", line_color="red", line_width=1.2,
+                     annotation_text=f"{threshold}°C", annotation_position="top right")
+    fig_ts.update_layout(
+        xaxis_title="날짜", yaxis_title="SST (°C)",
+        hovermode="x unified", height=80 + 60 * len(selected),
+        margin=dict(t=10, b=30, l=40, r=10),
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        font_color="#c8e6f0", legend=dict(orientation="h", y=-0.15),
     )
-    fig_cal.update_layout(height=80 + 55 * len(selected), margin=dict(t=10, b=20))
-    st.plotly_chart(fig_cal, use_container_width=True)
+    st.plotly_chart(fig_ts, use_container_width=True)
 
 st.markdown("---")
 

@@ -8,10 +8,13 @@ import streamlit as st
 
 from utils.style import apply
 from utils.chat_widget import inject
+from utils.alert_widget import inject_alerts
+from agents.alert_agent import get_active_alerts
 
 st.set_page_config(page_title="Report", page_icon="📄", layout="wide")
 apply()
 inject()
+inject_alerts(get_active_alerts())
 
 st.title("📄 Report · 최종 분석 결과")
 

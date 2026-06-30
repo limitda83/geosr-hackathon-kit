@@ -3,10 +3,13 @@ import streamlit as st
 from pathlib import Path
 from utils.style import apply, card, section, hero
 from utils.chat_widget import inject
+from utils.alert_widget import inject_alerts
+from agents.alert_agent import get_active_alerts
 
 st.set_page_config(page_title="Home", page_icon="🌊", layout="wide")
 apply()
 inject()
+inject_alerts(get_active_alerts())
 
 # ── 실제 데이터 로드 ─────────────────────────────────────
 @st.cache_data(ttl=300)

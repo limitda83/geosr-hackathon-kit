@@ -3,12 +3,15 @@ import pandas as pd
 from pathlib import Path
 from utils.style import apply
 from utils.chat_widget import inject
+from utils.alert_widget import inject_alerts
 from utils.region_extractor import load_disaster_events, extract_regions
 from utils.viz import make_frequency_map
+from agents.alert_agent import get_active_alerts
 
 st.set_page_config(page_title="Disaster Areas", page_icon="📰", layout="wide")
 apply()
 inject()
+inject_alerts(get_active_alerts())
 st.title("📰 Disaster Areas — 재난 뉴스 & 관심지역")
 
 # 실제 크롤링 데이터 로드 (없으면 샘플 fallback은 region_extractor 내부에서 처리)
