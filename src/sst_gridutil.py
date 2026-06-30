@@ -35,7 +35,7 @@ HOT_VAR = "hot_mask"   # 일별 파일의 변수: 1=고수온 / 0=비고수온 /
 # ---------------------------------------------------------------------------
 # 파일 목록 / 한 장씩 읽기 (스트리밍용 — 수십 일치도 메모리 안전)
 # ---------------------------------------------------------------------------
-def list_hot_files(hot_dir: str = "data/sst/hot") -> list:
+def list_hot_files(hot_dir: str = "data/results/sst_analysis/sst_over28") -> list:
     """폴더 안의 _HOT*.nc 파일을 '파일명 속 날짜' 순으로 정렬해 돌려준다."""
     paths = glob.glob(os.path.join(hot_dir, "*_HOT*.nc"))
     if not paths:
@@ -77,7 +77,7 @@ def read_hot_2d(path: str, var: str = HOT_VAR):
 # ---------------------------------------------------------------------------
 # (작은 자료용) 한꺼번에 시간축으로 쌓기
 # ---------------------------------------------------------------------------
-def load_hot_stack(hot_dir: str = "data/sst/hot", var: str = HOT_VAR) -> xr.DataArray:
+def load_hot_stack(hot_dir: str = "data/results/sst_analysis/sst_over28", var: str = HOT_VAR) -> xr.DataArray:
     """폴더 안의 _HOT*.nc 들을 (time, lat, lon) 으로 쌓은 DataArray 로 돌려준다(날짜순)."""
     arrays = []
     for p in list_hot_files(hot_dir):

@@ -132,17 +132,20 @@ def add_coastline(ax, extent, ne_dir: str = DEFAULT_NE_DIR,
 # 격자 자료 1장을 위경도 지도 PNG 로 (해안선 배경 합성)
 # ---------------------------------------------------------------------------
 def plot_grid_map(field, lon, lat, out_png: str, title: str,
-                  cmap: str = "YlOrRd", label: str = "",
+                  cmap="YlOrRd", label: str = "",
                   vmin=None, vmax=None, ne_dir: str = DEFAULT_NE_DIR,
-                  figsize=(9, 9), dpi: int = 110) -> str:
+                  figsize=(9, 9), dpi: int = 110, add_colorbar: bool = True) -> str:
     """2D 격자(field, dims lat×lon)를 해안선 배경 위에 그려 PNG 로 저장한다.
 
     - 바다(값 있음)는 컬러맵, 육지/결측(NaN)은 투명 → 뒤의 Natural Earth 육지색이 보임
     - lat 오름차순이므로 origin='lower' (북쪽이 위)
+    - cmap : 이름(str) 또는 Colormap 객체(예: 단색 ListedColormap) 모두 허용
+    - add_colorbar=False 면 범례(컬러바)를 그리지 않음(단색 마스크 표시용)
     """
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
+    from matplotlib.colors import Colormap
 
     lon = np.asarray(lon); lat = np.asarray(lat)
     extent = [float(lon.min()), float(lon.max()), float(lat.min()), float(lat.max())]
@@ -151,7 +154,7 @@ def plot_grid_map(field, lon, lat, out_png: str, title: str,
     fig, ax = plt.subplots(figsize=figsize)
     ax.set_facecolor("#eef5fb")             # 옅은 바다색 (값 없는 바다와 육지 구분용)
 
-    cmap_obj = plt.get_cmap(cmap).copy()
+    cmap_obj = (cmap if isinstance(cmap, Colormap) else plt.get_cmap(cmap)).copy()
     cmap_obj.set_bad((0, 0, 0, 0))         # NaN(육지)은 '투명' → 배경 육지색이 비침
 
     im = ax.imshow(arr, origin="lower", extent=extent, cmap=cmap_obj,
@@ -164,8 +167,9 @@ def plot_grid_map(field, lon, lat, out_png: str, title: str,
     ax.set_title(title)
     ax.set_xlabel("Longitude (°E)")
     ax.set_ylabel("Latitude (°N)")
-    cb = fig.colorbar(im, ax=ax, shrink=0.82)
-    cb.set_label(label or "")
+    if add_colorbar:
+        cb = fig.colorbar(im, ax=ax, shrink=0.82)
+        cb.set_label(label or "")
 
     fig.tight_layout()
     os.makedirs(os.path.dirname(os.path.abspath(out_png)), exist_ok=True)

@@ -38,9 +38,9 @@ _ROOT        = Path(__file__).parent.parent
 DISASTER_DB  = _ROOT / "data/processed/disaster_db/disaster_events.csv"
 REGION_FREQ  = _ROOT / "data/results/frequency/region_frequency.csv"
 SST_DIR      = _ROOT / "data"
-SST_HOT_IMG  = _ROOT / "data/sst/hot/img"
-SST_PERS_DIR = _ROOT / "data/sst/persistence"
-SST_TS_DIR   = _ROOT / "data/sst/timeseries"
+SST_HOT_IMG  = _ROOT / "data/results/sst_analysis/sst_over28/img"
+SST_PERS_DIR = _ROOT / "data/results/sst_analysis/persistence"
+SST_TS_DIR   = _ROOT / "data/results/sst_analysis/timeseries"
 
 # 포함 가능한 섹션 목록 (순서 = 보고서 순서, 번들 구조 반영)
 ALL_SECTIONS = ["overview", "news", "consec_map", "freq_map", "timeseries", "sst_stats", "hotmap", "conclusion"]

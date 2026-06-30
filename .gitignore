@@ -11,6 +11,9 @@ data/raw/
 *.nc
 *.nc.part
 
+# 단, 결과 성과물 nc 는 git 에 보관 (원자료 data/input 의 nc 는 계속 제외)
+!data/results/**/*.nc
+
 # 로컬 설정 / 캐시 / OS 부산물
 .claude/
 __pycache__/
@@ -20,32 +23,12 @@ __pycache__/
 # 환경변수 / 비밀키 (SST API 키 등 — 절대 커밋 금지)
 .env
 *.env
-.env.example
 
 # 로그
 *.log
 
-# 대용량 입력자료 (미공개 관측 원본 → 외부 업로드 금지 / 재취득 가능)
-data/khoa_sst/
-data/lss/
 
-# 생성 산출물 (파이프라인으로 재생성 가능: NC·이미지·CSV 등)
-data/sst/
-data/results/
+
 
 # 자동 재다운로드 가능한 참조자료 (Natural Earth 해안선)
 data/naturalearth/
-
-# 뉴스 원본 데이터 (저작권·용량) — 빅카인즈/언론 엑셀 커밋 금지
-*.xlsx
-*.xls
-data/news/uploads/
-
-# 외부에서 들어온 에이전트 모음 (내부 .git 포함, 약 8MB)
-agency-agents/
-
-# 생성물 DB/산출물 (재생성 가능)
-data/events.sqlite
-data/events.sqlite-wal
-data/events.sqlite-shm
-data/aoi.json
