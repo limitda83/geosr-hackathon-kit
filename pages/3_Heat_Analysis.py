@@ -152,8 +152,17 @@ with tab3:
 
     ts_imgs = sorted(TS_DIR.glob("SST_daily_mean_*.png"))
     hot_imgs = sorted(HOT_IMG_DIR.glob("*_HOT28.png"))
+    ss_imgs = sorted(Path("data/results/HS28NLS26/south_sea").glob("*_region.png"))
 
-    vt1, vt2 = st.tabs(["고수온 분포 지도", "일평균 SST 시계열"])
+    def _ss_label(p) -> str:
+        raw = p.stem.replace("HOTLOWSAL_", "").replace("_region", "")
+        try:
+            d = _dt.date(int(raw[:4]), int(raw[4:6]), int(raw[6:8]))
+            return f"{d.month}월 {d.day}일 ({_WEEKDAY_KO[d.weekday()]})"
+        except Exception:
+            return raw
+
+    vt1, vt2, vt3 = st.tabs(["고수온 분포 지도", "남해 고수온·저염분", "일평균 SST 시계열"])
 
     with vt1:
         if hot_imgs:
@@ -187,6 +196,38 @@ with tab3:
             st.info("고수온 분포 지도가 없습니다.")
 
     with vt2:
+        if ss_imgs:
+            ss_labels = [_ss_label(p) for p in ss_imgs]
+
+            if "ss_idx" not in st.session_state:
+                st.session_state.ss_idx = len(ss_imgs) - 1
+
+            sl, ss_slider, sr = st.columns([1, 8, 1])
+            with sl:
+                if st.button("◀", key="ss_prev", use_container_width=True) and st.session_state.ss_idx > 0:
+                    st.session_state.ss_idx -= 1
+            with sr:
+                if st.button("▶", key="ss_next", use_container_width=True) and st.session_state.ss_idx < len(ss_imgs) - 1:
+                    st.session_state.ss_idx += 1
+            with ss_slider:
+                st.session_state.ss_idx = st.select_slider(
+                    "날짜",
+                    options=list(range(len(ss_imgs))),
+                    value=st.session_state.ss_idx,
+                    format_func=lambda i: ss_labels[i],
+                    label_visibility="collapsed",
+                    key="ss_date_slider",
+                )
+
+            sidx = st.session_state.ss_idx
+            st.caption(f"남해 고수온(28℃↑)·저염분(26psu↓) 동시 발생 구역 · {ss_labels[sidx]} · {sidx + 1}/{len(ss_imgs)}")
+            _, sc2, _ = st.columns([1, 6, 1])
+            with sc2:
+                st.image(str(ss_imgs[sidx]), use_container_width=True)
+        else:
+            st.info("남해 고수온·저염분 이미지가 없습니다. (`data/results/HS28NLS26/south_sea/`)")
+
+    with vt3:
         if ts_imgs:
             _, c2, _ = st.columns([1, 6, 1])
             with c2:
