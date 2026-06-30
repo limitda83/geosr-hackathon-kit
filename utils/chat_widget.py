@@ -160,4 +160,4 @@ def inject():
   }});
 }})();
 </script>
-""", height=0)
+""", height=1, scrolling=False)
