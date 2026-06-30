@@ -11,6 +11,9 @@ data/raw/
 *.nc
 *.nc.part
 
+# 단, 결과 성과물 nc 는 git 에 보관 (원자료 data/input 의 nc 는 계속 제외)
+!data/results/**/*.nc
+
 # 로컬 설정 / 캐시 / OS 부산물
 .claude/
 __pycache__/
