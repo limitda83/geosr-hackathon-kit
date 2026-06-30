@@ -216,8 +216,9 @@ with tab4:
 
 st.markdown("---")
 
-# ── 고수온 감지 달력 히트맵 ──────────────────────────────
+# ── 고수온 감지 달력 + 지역별 시계열 ────────────────────
 st.subheader("🗓️ 지역별 고수온 감지 달력")
+st.caption(f"각 칸 = 해당 월의 고수온(≥{threshold}°C) 감지 일수. 숫자가 클수록 진한 색.")
 
 calendar_rows = []
 for region in selected:
@@ -232,15 +233,58 @@ for region in selected:
         })
 
 cal_df = pd.DataFrame(calendar_rows)
-if not cal_df.empty:
-    pivot = cal_df.pivot(index="지역", columns="월", values="고수온 일수")
-    fig_cal = px.imshow(
-        pivot, color_continuous_scale="YlOrRd", zmin=0,
-        text_auto=True,
-        labels={"color": f"고수온 일수 (≥{threshold}°C)"},
+
+col_cal, col_ts = st.columns([1, 1])
+
+with col_cal:
+    if not cal_df.empty:
+        pivot = cal_df.pivot(index="지역", columns="월", values="고수온 일수")
+        fig_cal = px.imshow(
+            pivot, color_continuous_scale="YlOrRd", zmin=0,
+            text_auto=True,
+            labels={"color": f"고수온 일수 (≥{threshold}°C)"},
+        )
+        fig_cal.update_layout(
+            height=80 + 60 * len(selected),
+            margin=dict(t=10, b=20),
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            font_color="#c8e6f0",
+        )
+        st.plotly_chart(fig_cal, use_container_width=True)
+
+with col_ts:
+    st.caption("지역별 일별 SST 시계열 — 고수온 구간(빨간 음영) 강조")
+    fig_ts = go.Figure()
+    colors = ["#00c2d4", "#00e5ff", "#00a896", "#ff6b35", "#7aacbf", "#ffb347"]
+    for i, region in enumerate(selected):
+        df = sst_data[region].sort_values("date")
+        color = colors[i % len(colors)]
+        hot = df["sst"] >= threshold
+        # 고수온 구간 음영
+        fig_ts.add_trace(go.Scatter(
+            x=pd.concat([df["date"], df["date"][::-1]]),
+            y=pd.concat([df["sst"].where(hot, threshold),
+                         pd.Series([threshold] * len(df))]),
+            fill="toself", fillcolor="rgba(255,80,0,0.10)",
+            line=dict(width=0), showlegend=False, hoverinfo="skip",
+        ))
+        fig_ts.add_trace(go.Scatter(
+            x=df["date"], y=df["sst"],
+            mode="lines", name=region,
+            line=dict(color=color, width=1.8),
+            hovertemplate=f"{region} %{{x|%m/%d}} %{{y:.1f}}°C<extra></extra>",
+        ))
+    fig_ts.add_hline(y=threshold, line_dash="dash", line_color="red", line_width=1.2,
+                     annotation_text=f"{threshold}°C", annotation_position="top right")
+    fig_ts.update_layout(
+        xaxis_title="날짜", yaxis_title="SST (°C)",
+        hovermode="x unified", height=80 + 60 * len(selected),
+        margin=dict(t=10, b=30, l=40, r=10),
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        font_color="#c8e6f0", legend=dict(orientation="h", y=-0.15),
     )
-    fig_cal.update_layout(height=80 + 55 * len(selected), margin=dict(t=10, b=20))
-    st.plotly_chart(fig_cal, use_container_width=True)
+    st.plotly_chart(fig_ts, use_container_width=True)
 
 st.markdown("---")
 
