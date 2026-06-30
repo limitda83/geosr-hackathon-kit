@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 import plotly.graph_objects as go
 import plotly.express as px
 from pathlib import Path
@@ -13,9 +14,12 @@ inject()
 st.title("🌡️ Heat Analysis — 해수면온도 분석")
 
 DATA_DIR = Path("data")
-HIGH_SST = 28.0
+DEFAULT_THRESHOLD = 28.0
+CONSEC_MIN = 3   # 연속 고수온 기준일 (sst_persistence.py 와 동일)
+FREQ_MIN   = 2   # 누적 빈도 기준일  (sst_frequency.py 와 동일)
 
 
+# ── 데이터 로드 ──────────────────────────────────────────
 @st.cache_data
 def load_all_sst() -> dict[str, pd.DataFrame]:
     result = {}
@@ -26,8 +30,40 @@ def load_all_sst() -> dict[str, pd.DataFrame]:
         df = pd.read_csv(f, encoding="utf-8", parse_dates=["date"])
         if "sst" in df.columns and "source" in df.columns:
             if df["source"].iloc[0] == "KHOA_OPeNDAP":
-                result[region] = df
+                result[region] = df.sort_values("date").reset_index(drop=True)
     return result
+
+
+def calc_hot_stats(df: pd.DataFrame, threshold: float) -> dict:
+    """sst_frequency.py / sst_persistence.py 와 동일한 로직을 CSV 단위로 계산."""
+    sst = df["sst"].values
+
+    # 누적 빈도 (sst_frequency.py: hot_freq)
+    hot_mask = sst >= threshold
+    hot_freq = int(hot_mask.sum())
+
+    # 연속 지속일수 (sst_persistence.py: max_consec)
+    max_consec = 0
+    cur = 0
+    for v in hot_mask:
+        cur = cur + 1 if v else 0
+        max_consec = max(max_consec, cur)
+
+    # 2일↑ 누적 (FREQ_MIN)
+    persist2 = hot_freq >= FREQ_MIN
+
+    # 3일↑ 연속 (CONSEC_MIN)
+    persist3 = max_consec >= CONSEC_MIN
+
+    return {
+        "avg": float(np.nanmean(sst)),
+        "max": float(np.nanmax(sst)),
+        "hot_freq": hot_freq,
+        "max_consec": max_consec,
+        "persist2": persist2,   # 2일↑ 누적 고수온 여부
+        "persist3": persist3,   # 3일↑ 연속 고수온 여부
+        "total_days": len(df),
+    }
 
 
 sst_data = load_all_sst()
@@ -41,105 +77,139 @@ regions = list(sst_data.keys())
 # ── 사이드바 ──────────────────────────────────────────────
 with st.sidebar:
     st.subheader("필터")
-    selected = st.multiselect("분석 지역", regions, default=regions[:3])
-    threshold = st.slider("고수온 기준 (°C)", 24.0, 32.0, HIGH_SST, 0.5)
+    selected = st.multiselect("분석 지역", regions, default=regions)
+    threshold = st.slider("고수온 기준 (°C)", 24.0, 32.0, DEFAULT_THRESHOLD, 0.5)
+    st.caption(f"누적 기준: {FREQ_MIN}일↑ / 연속 기준: {CONSEC_MIN}일↑")
 
 if not selected:
     st.info("왼쪽에서 지역을 하나 이상 선택하세요.")
     st.stop()
 
+stats = {r: calc_hot_stats(sst_data[r], threshold) for r in selected}
+
 # ── 요약 메트릭 ───────────────────────────────────────────
 st.subheader("📊 지역별 요약")
 cols = st.columns(len(selected))
 for col, region in zip(cols, selected):
-    df = sst_data[region]
-    avg   = df["sst"].mean()
-    mx    = df["sst"].max()
-    hot_days = (df["sst"] >= threshold).sum()
-    col.metric(f"🌊 {region}", f"평균 {avg:.1f}°C", f"최고 {mx:.1f}°C")
-    col.caption(f"고수온({threshold}°C↑) {hot_days}일")
+    s = stats[region]
+    badges = []
+    if s["persist2"]:
+        badges.append(f"🟠 누적 {FREQ_MIN}일↑")
+    if s["persist3"]:
+        badges.append(f"🔴 연속 {CONSEC_MIN}일↑")
+    col.metric(f"🌊 {region}", f"평균 {s['avg']:.1f}°C", f"최고 {s['max']:.1f}°C")
+    col.caption(f"고수온 {s['hot_freq']}일  |  최장연속 {s['max_consec']}일")
+    if badges:
+        col.markdown(" ".join(badges))
 
 st.markdown("---")
 
-# ── 시계열 차트 ──────────────────────────────────────────
+# ── 시계열 + 28°C 감지 강조 ──────────────────────────────
 st.subheader("📈 일별 해수면온도 추이")
 
 fig = go.Figure()
 
 for region in selected:
-    df = sst_data[region].sort_values("date")
+    df = sst_data[region]
+    hot = df["sst"] >= threshold
+
+    # 고수온 구간 배경 음영
+    fig.add_trace(go.Scatter(
+        x=pd.concat([df["date"], df["date"][::-1]]),
+        y=pd.concat([df["sst"].where(hot, threshold), pd.Series([threshold] * len(df))]),
+        fill="toself", fillcolor="rgba(255,80,0,0.12)",
+        line=dict(width=0), showlegend=False, hoverinfo="skip",
+    ))
+
     fig.add_trace(go.Scatter(
         x=df["date"], y=df["sst"],
         mode="lines", name=region,
         hovertemplate=f"{region}<br>%{{x|%Y-%m-%d}}<br>%{{y:.2f}}°C<extra></extra>",
     ))
 
-# 고수온 기준선
+    # 고수온 감지 마커
+    hot_df = df[hot]
+    if not hot_df.empty:
+        fig.add_trace(go.Scatter(
+            x=hot_df["date"], y=hot_df["sst"],
+            mode="markers", name=f"{region} 고수온",
+            marker=dict(color="red", size=5, symbol="circle"),
+            hovertemplate=f"{region} 고수온<br>%{{x|%Y-%m-%d}}<br>%{{y:.2f}}°C<extra></extra>",
+            showlegend=False,
+        ))
+
 fig.add_hline(
     y=threshold, line_dash="dash", line_color="red", line_width=1.5,
     annotation_text=f"고수온 기준 {threshold}°C",
     annotation_position="top left",
 )
-
 fig.update_layout(
-    xaxis_title="날짜",
-    yaxis_title="SST (°C)",
-    legend_title="지역",
-    hovermode="x unified",
-    height=420,
-    margin=dict(t=20, b=40),
+    xaxis_title="날짜", yaxis_title="SST (°C)",
+    legend_title="지역", hovermode="x unified",
+    height=440, margin=dict(t=20, b=40),
 )
 st.plotly_chart(fig, use_container_width=True)
 
 st.markdown("---")
 
-# ── 고수온 일수 비교 ─────────────────────────────────────
-st.subheader(f"🔥 고수온({threshold}°C↑) 일수 비교")
+# ── 누적 빈도 & 연속 지속 비교 (sst_frequency / sst_persistence 결과 대응) ──
+col_a, col_b = st.columns(2)
 
-hot_rows = []
-for region in selected:
-    df = sst_data[region]
-    hot_days = int((df["sst"] >= threshold).sum())
-    hot_rows.append({"지역": region, "고수온 일수": hot_days})
+with col_a:
+    st.subheader(f"🟠 누적 고수온 일수 ({FREQ_MIN}일↑ 기준)")
+    freq_rows = [{"지역": r, "고수온 일수": stats[r]["hot_freq"],
+                  f"{FREQ_MIN}일↑": "✅" if stats[r]["persist2"] else ""}
+                 for r in selected]
+    freq_df = pd.DataFrame(freq_rows).sort_values("고수온 일수", ascending=True)
+    fig_f = px.bar(freq_df, x="고수온 일수", y="지역", orientation="h",
+                   color="고수온 일수", color_continuous_scale="YlOrRd",
+                   text="고수온 일수")
+    fig_f.update_traces(textposition="outside")
+    fig_f.update_layout(height=80 + 50 * len(selected),
+                        margin=dict(t=10, b=20), coloraxis_showscale=False)
+    st.plotly_chart(fig_f, use_container_width=True)
 
-hot_df = pd.DataFrame(hot_rows).sort_values("고수온 일수", ascending=True)
-fig2 = px.bar(
-    hot_df, x="고수온 일수", y="지역", orientation="h",
-    color="고수온 일수", color_continuous_scale="YlOrRd",
-    text="고수온 일수",
-)
-fig2.update_traces(textposition="outside")
-fig2.update_layout(
-    height=60 + 50 * len(selected),
-    margin=dict(t=10, b=30),
-    coloraxis_showscale=False,
-)
-st.plotly_chart(fig2, use_container_width=True)
+with col_b:
+    st.subheader(f"🔴 최장 연속 고수온 ({CONSEC_MIN}일↑ 기준)")
+    consec_rows = [{"지역": r, "최장 연속일": stats[r]["max_consec"],
+                    f"{CONSEC_MIN}일↑": "✅" if stats[r]["persist3"] else ""}
+                   for r in selected]
+    consec_df = pd.DataFrame(consec_rows).sort_values("최장 연속일", ascending=True)
+    fig_c = px.bar(consec_df, x="최장 연속일", y="지역", orientation="h",
+                   color="최장 연속일", color_continuous_scale="OrRd",
+                   text="최장 연속일")
+    fig_c.update_traces(textposition="outside")
+    fig_c.update_layout(height=80 + 50 * len(selected),
+                        margin=dict(t=10, b=20), coloraxis_showscale=False)
+    st.plotly_chart(fig_c, use_container_width=True)
 
 st.markdown("---")
 
-# ── 월별 평균 히트맵 ─────────────────────────────────────
-st.subheader("🗓️ 월별 평균 SST 히트맵")
+# ── 고수온 감지 달력 히트맵 ──────────────────────────────
+st.subheader("🗓️ 지역별 고수온 감지 달력")
 
-monthly_rows = []
+calendar_rows = []
 for region in selected:
     df = sst_data[region].copy()
     df["month"] = df["date"].dt.to_period("M").astype(str)
+    df["hot"] = (df["sst"] >= threshold).astype(int)
     for month, grp in df.groupby("month"):
-        monthly_rows.append({"지역": region, "월": month, "평균SST": round(grp["sst"].mean(), 2)})
+        calendar_rows.append({
+            "지역": region, "월": month,
+            "고수온 일수": int(grp["hot"].sum()),
+            "평균SST": round(grp["sst"].mean(), 1),
+        })
 
-monthly_df = pd.DataFrame(monthly_rows)
-if not monthly_df.empty:
-    pivot = monthly_df.pivot(index="지역", columns="월", values="평균SST")
-    fig3 = px.imshow(
-        pivot,
-        color_continuous_scale="YlOrRd",
-        zmin=15, zmax=32,
-        text_auto=".1f",
-        labels={"color": "SST (°C)"},
+cal_df = pd.DataFrame(calendar_rows)
+if not cal_df.empty:
+    pivot = cal_df.pivot(index="지역", columns="월", values="고수온 일수")
+    fig_cal = px.imshow(
+        pivot, color_continuous_scale="YlOrRd", zmin=0,
+        text_auto=True,
+        labels={"color": f"고수온 일수 (≥{threshold}°C)"},
     )
-    fig3.update_layout(height=60 + 50 * len(selected), margin=dict(t=10, b=30))
-    st.plotly_chart(fig3, use_container_width=True)
+    fig_cal.update_layout(height=80 + 55 * len(selected), margin=dict(t=10, b=20))
+    st.plotly_chart(fig_cal, use_container_width=True)
 
 st.markdown("---")
 
@@ -166,10 +236,8 @@ def load_hotlowsal_day(date_str: str):
 summary_df = load_hotlowsal_summary()
 
 if summary_df is None or summary_df.empty:
-    st.info("`src/hot_lowsal.py`를 실행하면 이 섹션에 결과가 표시됩니다.\n\n"
-            "```bash\npython src/hot_lowsal.py --start 2025-07-01 --end 2025-08-31\n```")
+    st.warning("결과 파일 없음 — `python src/hot_lowsal.py` 실행 후 새로고침하세요.")
 else:
-    # 날짜별 격자 수 추이
     col1, col2, col3 = st.columns(3)
     col1.metric("총 분석일", f"{len(summary_df)}일")
     col2.metric("평균 공통 격자 수", f"{summary_df['both_count'].mean():,.0f}")
@@ -187,26 +255,23 @@ else:
         xaxis_title="날짜", yaxis_title="격자 수",
         hovermode="x unified", height=380,
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        font_color="#c8e6f0", legend_title="유형",
-        margin=dict(t=20, b=40),
+        font_color="#c8e6f0", legend_title="유형", margin=dict(t=20, b=40),
     )
     st.plotly_chart(fig_hl, use_container_width=True)
 
-    # 특정 날짜 지도
     st.markdown("##### 날짜별 공통지역 지도")
     date_options = summary_df["date"].dt.strftime("%Y-%m-%d").tolist()
     sel_date = st.selectbox("날짜 선택", date_options, index=len(date_options)//2)
     day_df = load_hotlowsal_day(sel_date)
-
     if day_df is not None and not day_df.empty:
         try:
             import folium
             from streamlit_folium import st_folium
+            from folium.plugins import HeatMap
             m = folium.Map(location=[day_df["lat"].mean(), day_df["lon"].mean()],
                            zoom_start=7, tiles="CartoDB dark_matter")
-            heat_data = day_df[["lat", "lon", "sst_celsius"]].values.tolist()
-            from folium.plugins import HeatMap
-            HeatMap(heat_data, radius=8, blur=6,
+            HeatMap(day_df[["lat", "lon", "sst_celsius"]].values.tolist(),
+                    radius=8, blur=6,
                     gradient={"0.4": "#00c2d4", "0.7": "#ff6b35", "1.0": "#ff0000"}).add_to(m)
             st_folium(m, width=None, height=420, use_container_width=True)
         except Exception as e:
@@ -221,7 +286,8 @@ with st.expander("📋 원본 데이터 보기"):
     tab_list = st.tabs(selected)
     for tab, region in zip(tab_list, selected):
         with tab:
-            df = sst_data[region].sort_values("date")
-            df_show = df[["date", "lat", "lon", "sst", "source"]].copy()
-            df_show["date"] = df_show["date"].dt.strftime("%Y-%m-%d")
-            st.dataframe(df_show, use_container_width=True, height=300)
+            df = sst_data[region].copy()
+            df["date"] = df["date"].dt.strftime("%Y-%m-%d")
+            df["고수온"] = (df["sst"] >= threshold).map({True: "🔴", False: ""})
+            st.dataframe(df[["date", "lat", "lon", "sst", "고수온", "source"]],
+                         use_container_width=True, height=300)
