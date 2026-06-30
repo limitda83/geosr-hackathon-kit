@@ -5,7 +5,7 @@ from utils.style import apply
 from utils.chat_widget import inject
 from utils.alert_widget import inject_alerts
 from utils.region_extractor import load_disaster_events, extract_regions
-from utils.viz import make_frequency_map
+from utils.viz import make_frequency_map, make_alert_bubble_map
 from agents.alert_agent import get_active_alerts
 
 st.set_page_config(page_title="Disaster Areas", page_icon="📰", layout="wide")
@@ -109,14 +109,13 @@ st.markdown(
 map_left, map_right = st.columns([1.3, 0.7])
 with map_left:
     if map_df.empty:
-        st.warning("?? ??? ?? ??? ??? ? ????.")
+        st.warning("지도 데이터가 없습니다.")
     else:
         try:
-            from streamlit_folium import st_folium
-            m = make_frequency_map(map_df)
-            st_folium(m, width=None, height=520, use_container_width=True)
+            deck = make_frequency_map(map_df)
+            st.pydeck_chart(deck, use_container_width=True, height=520)
         except Exception as e:
-            st.warning(f"?? ?? ??: {e}")
+            st.warning(f"지도 오류: {e}")
 with map_right:
     top_region = freq_df.sort_values("count", ascending=False).iloc[0] if not freq_df.empty else None
     st.markdown(

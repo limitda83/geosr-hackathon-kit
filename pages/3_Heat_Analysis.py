@@ -7,6 +7,7 @@ from pathlib import Path
 from utils.style import apply
 from utils.chat_widget import inject
 from utils.alert_widget import inject_alerts
+from utils.viz import make_hotlowsal_heatmap
 from utils.region_extractor import load_disaster_events, extract_regions
 from agents.alert_agent import get_active_alerts
 
@@ -377,15 +378,8 @@ else:
     day_df = load_hotlowsal_day(sel_date)
     if day_df is not None and not day_df.empty:
         try:
-            import folium
-            from streamlit_folium import st_folium
-            from folium.plugins import HeatMap
-            m = folium.Map(location=[day_df["lat"].mean(), day_df["lon"].mean()],
-                           zoom_start=7, tiles="CartoDB dark_matter")
-            HeatMap(day_df[["lat", "lon", "sst_celsius"]].values.tolist(),
-                    radius=8, blur=6,
-                    gradient={"0.4": "#00c2d4", "0.7": "#ff6b35", "1.0": "#ff0000"}).add_to(m)
-            st_folium(m, width=None, height=420, use_container_width=True)
+            deck = make_hotlowsal_heatmap(day_df)
+            st.pydeck_chart(deck, use_container_width=True, height=420)
         except Exception as e:
             st.warning(f"지도 오류: {e}")
     else:
