@@ -185,6 +185,7 @@ def _docx_overview(doc, news_df, sst_stat_df):
 
 
 def _docx_timeseries(doc, ts_df):
+    from docx.shared import Inches
     doc.add_heading("2. 일평균 SST 시계열", 1)
     # 이미지
     imgs = sorted(SST_TS_DIR.glob("SST_daily_mean_*.png")) if SST_TS_DIR.exists() else []
