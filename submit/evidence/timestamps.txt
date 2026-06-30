@@ -1,0 +1,28 @@
+# 산출물 타임스탬프 (자동 기록)
+# 기록 시각: 2026-06-30 14:46:25 +0900
+# 작성자: 김지니(jiny) / 팀 gvidia / 브랜치 dev/jnkim
+
+2026-06-30 14:11:33  .claude/agents/region-geocoder.md
+2026-06-30 14:11:35  .claude/agents/ocean-data-collector.md
+2026-06-30 14:23:45  scripts/geocode.py
+2026-06-30 14:23:43  scripts/collect_ocean_sst.py
+2026-06-30 14:29:27  data/geocode_cache.csv
+2026-06-30 14:24:23  data/regions_geocoded.csv
+2026-06-30 14:23:58  data/Tongyeong_20260601-20260630.csv
+2026-06-30 14:32:04  submit/gvidia_jiny_PROCESS_LOG.md
+
+- 2026-06-30 15:00 +09:00: UI redesign applied to `app.py`, `pages/1_Home.py`, `pages/2_Disaster_Areas.py`, `pages/3_Heat_Analysis.py`, `pages/4_Report.py`, `pages/5_AI_Chat.py`, `utils/style.py`
+- 2026-06-30 18:58 +09:00: submit/gvidia_jiny_PROCESS_LOG.md 한글 깨짐 복구 (UTF-8로 재작성)
+
+--- 2026-06-30 19:07 KST 업데이트 ---
+2026-06-30 18:47:53  agents/alert_agent.py              (고수온 경보/주의보 서브에이전트)
+2026-06-30 18:47:53  utils/alert_widget.py              (플로팅 토스트 알림 위젯)
+2026-06-30 18:48:30  agents/main_agent.py               (4단계 파이프라인 통합)
+2026-06-30 18:48:49  .claude/agents/alert-agent.md      (서브에이전트 재사용 정의)
+2026-06-30 18:25:34  agents/report_agent.py             (PDF+Word 보고서 서브에이전트)
+2026-06-30 18:25:35  utils/chat_widget.py               (OpenAI GPT-4o-mini 챗봇)
+2026-06-30 18:47:53  pages/1_Home.py                    (실제 데이터 기반 Metric 표시)
+2026-06-30 19:03:27  pages/3_Heat_Analysis.py           (plotly scatter_mapbox 전환)
+2026-06-30 19:06:45  pages/2_Disaster_Areas.py          (plotly scatter_mapbox 전환)
+2026-06-30 19:07:03  submit/gvidia_jiny_PROCESS_LOG.md  (#8~#10 항목 추가)
+2026-06-30 19:07:25  submit/BEFORE_AFTER.md             (Before/After 상세 기재)
