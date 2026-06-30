@@ -44,6 +44,18 @@ else:
     filtered = df
 
 st.caption(f"총 {len(filtered):,}건 / 전체 {len(df):,}건")
+
+# 기간/키워드 필터를 빈도·TOP N·지도에도 반영: filtered에서 빈도 재계산(좌표는 freq_df에서 조인)
+_coords = (freq_df[["location", "lat", "lon"]].drop_duplicates("location")
+           if {"location", "lat", "lon"}.issubset(freq_df.columns)
+           else pd.DataFrame(columns=["location", "lat", "lon"]))
+_loc = (filtered[filtered["location"].astype(str).str.strip().ne("")]
+        if "location" in filtered.columns else filtered.iloc[0:0])
+filt_freq = (_loc.groupby("location").size().reset_index(name="count")
+             .merge(_coords, on="location", how="left")
+             .dropna(subset=["lat", "lon"])
+             .sort_values("count", ascending=False))
+
 st.markdown("---")
 
 # 뉴스 테이블
@@ -57,10 +69,10 @@ col1, col2 = st.columns([1, 1])
 
 with col1:
     st.subheader("📊 발생 위치 빈도")
-    if not freq_df.empty:
+    if not filt_freq.empty:
         import plotly.express as px
         fig = px.bar(
-            freq_df.sort_values("count", ascending=True).head(20),
+            filt_freq.sort_values("count", ascending=True).head(20),
             x="count", y="location", orientation="h",
             labels={"count": "발생 횟수", "location": "지역"},
             color="count", color_continuous_scale="teal",
@@ -70,11 +82,13 @@ with col1:
             font_color="#c8e6f0", showlegend=False,
         )
         st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("선택한 기간에 해당하는 데이터가 없습니다.")
 
 with col2:
     st.subheader("🏆 관심지역 TOP N")
     top_n = st.slider("TOP N", 3, 15, 5)
-    top_regions = freq_df.sort_values("count", ascending=False).head(top_n)
+    top_regions = filt_freq.sort_values("count", ascending=False).head(top_n)
     for rank, (_, row) in enumerate(top_regions.iterrows(), 1):
         st.markdown(f"**{rank}위** {row['location']} — {int(row['count'])}건")
 
@@ -82,13 +96,13 @@ st.markdown("---")
 
 # 지도
 st.subheader("🗺️ 관심지역 지도")
-map_df = freq_df.dropna(subset=["lat", "lon"])
+map_df = filt_freq.dropna(subset=["lat", "lon"])
 if map_df.empty:
-    st.warning("?????????? ??? ????? ?????????????.")
+    st.warning("선택한 기간에 표시할 지역 데이터가 없습니다.")
 else:
     try:
         from streamlit_folium import st_folium
         m = make_frequency_map(map_df)
         st_folium(m, width=None, height=450, use_container_width=True)
     except Exception as e:
-        st.warning(f"???????: {e}")
+        st.warning(f"지도 오류: {e}")
