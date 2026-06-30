@@ -86,12 +86,62 @@ st.markdown("---")
 # 지도
 st.subheader("🗺️ 관심지역 지도")
 map_df = freq_df.dropna(subset=["lat", "lon"])
-if map_df.empty:
-    st.warning("?????????? ??? ????? ?????????????.")
-else:
-    try:
-        from streamlit_folium import st_folium
-        m = make_frequency_map(map_df)
-        st_folium(m, width=None, height=450, use_container_width=True)
-    except Exception as e:
-        st.warning(f"???????: {e}")
+
+st.markdown(
+    """
+    <div class="ocean-card">
+        <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;margin-bottom:14px;">
+            <div>
+                <div style="font-size:12px;color:#7aacbf;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:6px;">Map View</div>
+                <h3 style="margin:0;color:#e8f4f8;">?? ?? ??</h3>
+                <div style="margin-top:6px;color:#7aacbf;font-size:13px;">?? ???? ??? ?? ??? ?? ?? ?? ?????.</div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <span style="padding:7px 12px;border-radius:999px;background:rgba(0,194,212,0.10);color:#c8e6f0;font-size:12px;border:1px solid rgba(0,194,212,0.18);">OpenStreetMap</span>
+                <span style="padding:7px 12px;border-radius:999px;background:rgba(0,168,150,0.10);color:#c8e6f0;font-size:12px;border:1px solid rgba(0,168,150,0.18);">???? ??</span>
+            </div>
+        </div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+map_left, map_right = st.columns([1.3, 0.7])
+with map_left:
+    if map_df.empty:
+        st.warning("?? ??? ?? ??? ??? ? ????.")
+    else:
+        try:
+            from streamlit_folium import st_folium
+            m = make_frequency_map(map_df)
+            st_folium(m, width=None, height=520, use_container_width=True)
+        except Exception as e:
+            st.warning(f"?? ?? ??: {e}")
+with map_right:
+    top_region = freq_df.sort_values("count", ascending=False).iloc[0] if not freq_df.empty else None
+    st.markdown(
+        f"""
+        <div class="ocean-card" style="height:100%;">
+            <div style="font-size:12px;color:#7aacbf;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:8px;">Map Summary</div>
+            <div style="display:grid;grid-template-columns:1fr;gap:12px;">
+                <div style="padding:14px;border-radius:14px;background:rgba(0,194,212,0.06);border:1px solid rgba(0,194,212,0.12);">
+                    <div style="font-size:12px;color:#7aacbf;">?? ?? ?</div>
+                    <div style="font-size:26px;font-weight:800;color:#00e5ff;">{len(map_df):,}</div>
+                </div>
+                <div style="padding:14px;border-radius:14px;background:rgba(0,168,150,0.06);border:1px solid rgba(0,168,150,0.12);">
+                    <div style="font-size:12px;color:#7aacbf;">?? ?? ??? ??</div>
+                    <div style="font-size:22px;font-weight:800;color:#e8f4f8;">{top_region['location'] if top_region is not None else "-"}</div>
+                </div>
+                <div style="padding:14px;border-radius:14px;background:rgba(255,107,53,0.06);border:1px solid rgba(255,107,53,0.12);">
+                    <div style="font-size:12px;color:#7aacbf;">?? ?? ??</div>
+                    <div style="font-size:22px;font-weight:800;color:#ffb199;">{int(top_region['count']) if top_region is not None else 0:,}?</div>
+                </div>
+                <div style="padding:14px;border-radius:14px;background:rgba(0,194,212,0.05);border:1px solid rgba(0,194,212,0.10);">
+                    <div style="font-size:12px;color:#7aacbf;">?? ??</div>
+                    <div style="font-size:14px;color:#c8e6f0;line-height:1.7;">?? ??? ???? ???, ??? ?? ??? ??? ?????.</div>
+                </div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
