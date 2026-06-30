@@ -44,13 +44,44 @@ SST_TS_DIR   = _ROOT / "data/sst/timeseries"
 
 # 포함 가능한 섹션 목록 (순서 = 보고서 순서, 번들 구조 반영)
 ALL_SECTIONS = ["overview", "news", "consec_map", "freq_map", "timeseries", "sst_stats", "hotmap", "conclusion"]
-SST_HOTLOW_IMG = _ROOT / "data/results/hotlowsal/img"
+SST_HOTLOW_IMG  = _ROOT / "data/results/hotlowsal/img"
+REGION_MAP_PNG  = _ROOT / "data/results/frequency/region_map.png"
+REGION_MAP_DIR  = _ROOT / "data/results/frequency"
 
 
 # ── 데이터 로더 ──────────────────────────────────────────
 
 def _load_news() -> pd.DataFrame:
     return pd.read_csv(DISASTER_DB, encoding="utf-8", parse_dates=["date"])
+
+
+def _make_region_map_png(freq_df: pd.DataFrame) -> Path:
+    """관심지역 지도를 PNG로 저장하고 경로 반환."""
+    import plotly.express as px
+    df = freq_df.dropna(subset=["lat", "lon"]).copy()
+    fig = px.scatter_geo(
+        df, lat="lat", lon="lon", size="count",
+        hover_name="location", text="location",
+        color="count", color_continuous_scale="Teal",
+        size_max=30, scope="asia",
+        center=dict(lat=36.5, lon=127.5),
+    )
+    fig.update_geos(
+        fitbounds="locations", visible=True, resolution=50,
+        showcountries=True, countrycolor="#aaaaaa",
+        showland=True, landcolor="#f0f4f8",
+        showocean=True, oceancolor="#ddeeff",
+    )
+    fig.update_layout(
+        margin=dict(l=0, r=0, t=0, b=0),
+        coloraxis_showscale=False, showlegend=False,
+        height=500, width=700,
+    )
+    fig.update_traces(textposition="top center", textfont_size=9)
+    out = REGION_MAP_DIR / "region_map.png"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    fig.write_image(str(out), scale=2)
+    return out
 
 
 def _load_sst_frames(threshold: float) -> tuple[dict, pd.DataFrame]:
@@ -234,31 +265,28 @@ def _docx_sst_stats(doc, sst_stat_df):
 
 
 def _docx_news(doc, news_df, top_n, freq_df: pd.DataFrame | None = None):
-    doc.add_heading("뉴스 기반 지역 언급 빈도", 1)
+    from docx.shared import Inches
+    doc.add_heading("고수온 이벤트 분석결과 (뉴스 크롤링)", 1)
     if freq_df is not None and not freq_df.empty:
-        doc.add_paragraph("뉴스 크롤링에서 집계된 지역별 언급 횟수입니다.")
-        show = freq_df.sort_values("count", ascending=False).head(15)
+        doc.add_paragraph(f"설정 기간 지역별 고수온 재난 발생 횟수 (총 {len(news_df):,}건)")
+        show = freq_df.sort_values("count", ascending=False).head(10)
         t = doc.add_table(rows=1, cols=3, style="Table Grid")
-        for i, h in enumerate(["지역", "언급 횟수", "위도/경도"]):
+        for i, h in enumerate(["순위", "지역", "발생 건수"]):
             t.rows[0].cells[i].text = h
-        for _, r in show.iterrows():
+        for i, (_, r) in enumerate(show.iterrows(), 1):
             row = t.add_row().cells
-            row[0].text = str(r["location"])
-            row[1].text = str(r["count"])
-            row[2].text = f"{r.get('lat', '')} / {r.get('lon', '')}"
+            row[0].text = str(i)
+            row[1].text = str(r["location"])
+            row[2].text = str(r["count"])
         doc.add_paragraph()
-
-    doc.add_heading(f"주요 재난 뉴스 (최근 {top_n}건)", 1)
-    recent = news_df.sort_values("date", ascending=False).head(top_n)
-    t = doc.add_table(rows=1, cols=3, style="Table Grid")
-    for i, h in enumerate(["날짜", "지역", "제목"]):
-        t.rows[0].cells[i].text = h
-    for _, r in recent.iterrows():
-        row = t.add_row().cells
-        row[0].text = str(r["date"])[:10]
-        row[1].text = str(r.get("location", ""))
-        row[2].text = str(r.get("title", ""))[:80]
-    doc.add_paragraph()
+        # 관심지역 지도
+        try:
+            map_png = _make_region_map_png(freq_df)
+            doc.add_heading("관심지역 분포 지도", 1)
+            doc.add_picture(str(map_png), width=Inches(5.5))
+        except Exception:
+            pass
+        doc.add_paragraph()
 
 
 # ── PDF 생성 ─────────────────────────────────────────────
@@ -379,22 +407,21 @@ def _build_pdf(
                 story.append(Paragraph(
                     f"설정 기간 동안 지역별 고수온 재난 발생 횟수(총 {len(news_df):,}건). "
                     f"{top5} 등 남해안과 제주에 발생이 집중됨.", kor))
+                # 빈도 표
                 show = freq_df.sort_values("count", ascending=False).head(10)
                 tdata = [["순위", "지역", "발생 건수"]]
                 for i, (_, r) in enumerate(show.iterrows(), 1):
                     tdata.append([str(i), str(r["location"]), str(r["count"])])
                 story.append(_table(tdata, [20*mm, 80*mm, 70*mm]))
                 story.append(Spacer(1, 3*mm))
-
-            story.append(Paragraph(f"주요 재난 뉴스 (최근 {top_n}건)", h2))
-            recent = news_df.sort_values("date", ascending=False).head(top_n)
-            tdata  = [["날짜", "지역", "제목"]]
-            for _, r in recent.iterrows():
-                tdata.append([str(r["date"])[:10],
-                              str(r.get("location", "")),
-                              str(r.get("title", ""))[:55]])
-            story.append(_table(tdata, [28*mm, 20*mm, 122*mm]))
-            story.append(Spacer(1, 4*mm))
+                # 관심지역 지도
+                try:
+                    map_png = _make_region_map_png(freq_df)
+                    story.append(Paragraph("관심지역 분포 지도", h2))
+                    story.append(RLImage(str(map_png), width=160*mm, height=110*mm))
+                except Exception:
+                    pass
+                story.append(Spacer(1, 4*mm))
 
         elif sec == "consec_map":
             imgs = sorted(SST_PERS_DIR.glob("SST_MAXCONSEC*.png"))
