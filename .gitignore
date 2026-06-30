@@ -1,8 +1,11 @@
 # 제출 폴더는 git에 올리지 않음 (별도 zip으로 제출)
 submit/
 
-# 대용량 데이터(받은 SST 등) — 저장소에 넣지 않음
-data/
+# API 키
+.streamlit/secrets.toml
+
+# 대용량 데이터 (SST 등)
+data/raw/
 *.nc
 *.nc.part
 

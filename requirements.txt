@@ -1,28 +1,31 @@
-# team-gvidia 의존성 (뉴스 크롤러 + SST 분석 + 웹 UI 통합본)
-# 설치:  pip install -r requirements.txt
-#
-# ※ origin/main(팀원 Streamlit 뼈대)과 dev/srlee(크롤러·SST) 의존성을 합집합으로 병합
+# team-gvidia 의존성 통합본
+# 설치: pip install -r requirements.txt
 
 # --- 공통 / 웹 UI ---
 streamlit>=1.30.0
 pandas>=2.0.0
 requests>=2.31.0
-anthropic
 
-# --- 뉴스 크롤러 (news_crawler.py / app.py) ---
+# --- 뉴스 크롤러 ---
 feedparser>=6.0.10
 trafilatura>=2.0.0
 googlenewsdecoder>=0.1.7
 beautifulsoup4
 
-# --- SST(해수면온도) 분석 (sst_*.py / download_khoa_sst.py) ---
+# --- SST 분석 ---
 xarray>=2023.6.0
 netCDF4>=1.6.0
 numpy>=1.24.0
 matplotlib>=3.7.0
-pyshp>=2.3.0          # import 이름은 shapefile (Natural Earth 해안선)
+pyshp>=2.3.0
 
-# --- 지도 / 시각화 (팀원 추가) ---
+# --- 지도 / 시각화 ---
 plotly
 folium
 streamlit-folium
+
+# --- AI 챗봇 ---
+openai
+
+# --- 보고서 ---
+python-docx
