@@ -166,26 +166,47 @@ def show_images(paths: list[Path], cols: int = 2):
             c.image(str(p), caption=p.stem, use_container_width=True)
     return True
 
-tab1, tab2, tab3 = st.tabs(["🗺️ 일별 고수온 지도", "🟠 누적 빈도 지도", "🔴 연속 지속 지도"])
+SST_TS_DIR = Path("data/sst/timeseries")
+
+tab1, tab2, tab3, tab4 = st.tabs(["🗺️ 일별 고수온 지도", "🟠 누적 빈도 지도", "🔴 최장 연속 지도", "📈 일평균 SST 추이"])
 
 with tab1:
     imgs = sorted((SST_HOT_DIR / "img").glob("*.png")) if (SST_HOT_DIR / "img").exists() else []
-    if not show_images(imgs, cols=3):
-        st.info("분석 결과 이미지가 없습니다. 아래 파이프라인을 실행하세요.\n\n"
-                "**1단계** — KHOA NC 파일 다운로드:\n"
-                "```bash\npython src/download_khoa_sst.py --start 2025-07-01 --end 2025-08-31\n```\n"
-                "**2단계** — 전체 분석 파이프라인 실행:\n"
+    if imgs:
+        # 날짜 슬라이더로 탐색
+        dates = [p.stem.split("_U")[-1].replace("_HOT28", "") for p in imgs]
+        dates_fmt = [f"{d[:4]}-{d[4:6]}-{d[6:]}" for d in dates]
+        idx = st.select_slider("날짜 선택", options=range(len(dates_fmt)),
+                               format_func=lambda i: dates_fmt[i], value=0)
+        st.image(str(imgs[idx]), caption=f"{dates_fmt[idx]} 고수온(28°C↑) 분포",
+                 use_container_width=True)
+        st.caption(f"총 {len(imgs)}일치 이미지 — 슬라이더로 날짜를 이동하세요.")
+    else:
+        st.info("분석 결과 이미지가 없습니다.\n\n"
                 "```bash\npython src/run_pipeline.py data/khoa_sst data/sst/hot data/sst/persistence\n```")
 
 with tab2:
     imgs = sorted(SST_PERS_DIR.glob("SST_HOTFREQ*.png"))
-    if not show_images(imgs, cols=2):
+    if not show_images(imgs, cols=1):
         st.info("누적 빈도 지도가 없습니다. `run_pipeline.py` 실행 후 표시됩니다.")
 
 with tab3:
-    imgs = sorted(SST_PERS_DIR.glob("SST_HOTCONSEC*.png"))
-    if not show_images(imgs, cols=2):
-        st.info("연속 지속 지도가 없습니다. `run_pipeline.py` 실행 후 표시됩니다.")
+    imgs = sorted(SST_PERS_DIR.glob("SST_MAXCONSEC*.png"))
+    if not show_images(imgs, cols=1):
+        st.info("최장 연속 지도가 없습니다. `run_pipeline.py` 실행 후 표시됩니다.")
+
+with tab4:
+    ts_png = sorted(SST_TS_DIR.glob("SST_daily_mean_*.png")) if SST_TS_DIR.exists() else []
+    ts_csv = sorted(SST_TS_DIR.glob("SST_daily_mean_*.csv")) if SST_TS_DIR.exists() else []
+    if ts_png:
+        st.image(str(ts_png[0]), caption="일평균 SST 추이 (2025-07-01 ~ 08-31)",
+                 use_container_width=True)
+    if ts_csv:
+        ts_df = pd.read_csv(ts_csv[0])
+        with st.expander("원본 CSV 보기"):
+            st.dataframe(ts_df, use_container_width=True)
+    if not ts_png and not ts_csv:
+        st.info("시계열 데이터가 없습니다. `src/sst_timeseries.py` 실행 후 표시됩니다.")
 
 st.markdown("---")
 
