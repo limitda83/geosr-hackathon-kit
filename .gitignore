@@ -1,0 +1,33 @@
+# 제출 폴더는 git에 올리지 않음 (별도 zip으로 제출)
+submit/
+
+# API 키
+.streamlit/secrets.toml
+
+# 대용량 데이터 (SST 등)
+data/raw/
+*.nc
+*.nc.part
+
+# 로컬 설정 / 캐시 / OS 부산물
+.claude/
+__pycache__/
+*.pyc
+.DS_Store
+
+.env
+.env.example
+
+# 뉴스 원본 데이터 (저작권·용량) — 빅카인즈/언론 엑셀 커밋 금지
+*.xlsx
+*.xls
+data/news/uploads/
+
+# 외부에서 들어온 에이전트 모음 (내부 .git 포함, 약 8MB)
+agency-agents/
+
+# 생성물 DB/산출물 (재생성 가능)
+data/events.sqlite
+data/events.sqlite-wal
+data/events.sqlite-shm
+data/aoi.json
