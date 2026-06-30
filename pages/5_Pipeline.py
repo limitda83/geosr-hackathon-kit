@@ -54,8 +54,16 @@ if st.button("파이프라인 실행", type="primary", use_container_width=True)
             n_located = freq_df.dropna(subset=["lat", "lon"]).shape[0]
 
             # ── Step 2: 지역별 SST 수집 (KHOA OPeNDAP, API 키 불필요) ──
-            from scripts.collect_sst_by_region import collect_region, load_regions_from_crawl
+            import sys, importlib.util
             from datetime import date
+
+            _spec = importlib.util.spec_from_file_location(
+                "collect_sst_by_region",
+                Path(__file__).parent.parent / "scripts" / "collect_sst_by_region.py",
+            )
+            _mod = importlib.util.module_from_spec(_spec)
+            _spec.loader.exec_module(_mod)
+            collect_region = _mod.collect_region
 
             regions_df = freq_df.dropna(subset=["lat", "lon"])
             saved, failed = [], []

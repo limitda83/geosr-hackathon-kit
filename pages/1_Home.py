@@ -112,7 +112,14 @@ if submitted:
         n_news = len(events_df)
         prog.progress(40, text=f"뉴스 {n_news}건 로드 · 지역 추출 완료")
 
-        from scripts.collect_sst_by_region import collect_region
+        import importlib.util
+        _spec = importlib.util.spec_from_file_location(
+            "collect_sst_by_region",
+            Path("scripts/collect_sst_by_region.py").resolve(),
+        )
+        _mod = importlib.util.module_from_spec(_spec)
+        _spec.loader.exec_module(_mod)
+        collect_region = _mod.collect_region
         from datetime import date as _date
 
         regions_df = freq_df.dropna(subset=["lat", "lon"])
